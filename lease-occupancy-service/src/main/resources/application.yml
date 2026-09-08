@@ -34,3 +34,12 @@ info:
   service:
     name: lease-occupancy-service
     description: Owns lease and occupancy records for the Apartment Management System
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  show-actuator: false
