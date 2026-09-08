@@ -85,11 +85,11 @@ Status legend: ✅ implemented · ⏳ not yet built.
 
 | | Method | Path | Auth | Notes |
 |---|---|---|---|---|
-| ✅ | POST | `/api/v1/leases` | Manager* | Validates tenant ID with Group 1; checks schedule conflicts |
-| ✅ | GET | `/api/v1/leases` | Manager* | Filterable by status and an active-on date, paginated |
-| ⏳ | GET | `/api/v1/leases/{leaseId}` | Manager or Resident | Resident access only if their `userId` appears as occupant/tenant on this lease |
-| ⏳ | GET | `/api/v1/leases/units/{unitId}` | Manager or Owner | Chronological lease history for a unit |
-| ✅ | PATCH | `/api/v1/leases/{leaseId}/status` | Manager* | Activate / terminate / complete, with transition + re-overlap checks |
+| ✅ | POST | `/api/v1/leases` | MANAGER | Validates tenant ID with Group 1; checks schedule conflicts |
+| ✅ | GET | `/api/v1/leases` | MANAGER | Filterable by status and an active-on date, paginated |
+| ⏳ | GET | `/api/v1/leases/{leaseId}` | MANAGER or RESIDENT | Resident access only if their `userId` appears as occupant/tenant on this lease |
+| ⏳ | GET | `/api/v1/leases/units/{unitId}` | MANAGER or OWNER | Chronological lease history for a unit |
+| ✅ | PATCH | `/api/v1/leases/{leaseId}/status` | MANAGER | Activate / terminate / complete, with transition + re-overlap checks |
 
 **B. Physical Occupancies (public, gateway-routed)** — ⏳ not started (no `Occupant` entity yet)
 
@@ -104,12 +104,10 @@ Status legend: ✅ implemented · ⏳ not yet built.
 
 | | Method | Path | Allowed caller (`sub`) | Purpose |
 |---|---|---|---|---|
-| ✅† | GET | `/api/v1/internal/occupancies/active-billing` | `billing-payment-service` (Group 3) | Active units + billing targets for recurring invoicing |
-| ✅† | GET | `/api/v1/internal/occupancies/validate` | `operations-service` (Group 4) | Check tenant actively resides in unit before facility booking / maintenance request. Currently backed by `Lease` (tenant-of-record); should switch to `Occupant` once B exists |
+| ✅ | GET | `/api/v1/internal/occupancies/active-billing` | `billing-payment-service` (Group 3) | Active units + billing targets for recurring invoicing |
+| ✅ | GET | `/api/v1/internal/occupancies/validate` | `operations-service` (Group 4) | Check tenant actively resides in unit before facility booking / maintenance request. Currently backed by `Lease` (tenant-of-record); should switch to `Occupant` once B exists |
 
-† Implemented but **not yet enforcing the Service JWT / caller allow-list** — currently reachable by anyone who can reach the port. See §8.
-
-**D. System operations (public/actuator)**
+**D. System operations (public/actuator, unauthenticated)**
 
 | | Method | Path | Notes |
 |---|---|---|---|
@@ -117,7 +115,7 @@ Status legend: ✅ implemented · ⏳ not yet built.
 | ✅ | GET | `/actuator/info` | Deployment metadata for Gateway |
 | ✅ | GET | `/swagger-ui.html`, `/v3/api-docs` | SpringDoc, split into `public`/`internal` groups |
 
-*Manager-role enforcement is **not yet wired in** — no JWT filter/library exists in this service yet (see §6).
+Role and service-caller checks (§8) are enforced on every ✅ endpoint above except §D. **Caveat:** until a real `GATEWAY_JWT_PUBLIC_KEY` is configured, this service verifies against a locally-generated ephemeral keypair — it will reject every token actually signed by a real Gateway. See §8.3.
 
 ### Cross-team integration
 
@@ -158,24 +156,26 @@ Full detail in [API-STANDARD-v1.md](API-STANDARD-v1.md). Key points every endpoi
 Implemented (on `main`, all pushed to GitHub):
 
 - Spring Boot 3.5.16 / Java 21 project scaffold, port `8084`, Controller-Service-Repository package layout.
-- SpringDoc/Swagger, split into `public` and `internal` groups. **Note:** the `internal` group currently documents no auth requirement — per §8 it should document the Service JWT instead; needs updating alongside the JWT work.
+- SpringDoc/Swagger, split into `public` and `internal` groups, both documenting the shared `bearerAuth` (Gateway JWT) requirement.
 - Flyway `V1__create_leases_schema.sql` + `Lease` entity/repository.
 - Shared `ApiResponse`/`ApiError`/`PaginationMeta` envelope, `BusinessException` hierarchy → stable error codes, `GlobalExceptionHandler`, `X-Request-ID` filter/`RequestContext` — the common infrastructure every future endpoint reuses.
-- `IdentityServiceClient` — bounded-timeout (2s/5s) REST call to identity-access-service's internal user-validation endpoint; failures surface as `503 DEPENDENCY_UNAVAILABLE`. **Needs rework per §8:** currently calls identity-access-service directly (`IDENTITY_SERVICE_URL`), bypassing the Gateway and sending no JWT at all — the standard requires this call to carry a self-signed Service JWT and route through the Gateway instead.
+- **JWT authentication & authorization (§8), fully implemented:** `JwtKeyConfig` (RSA key loading, with an ephemeral-dev-key fallback), `JwtService` (verify Gateway JWTs / mint outbound Service JWTs), `JwtAuthenticationFilter` (runs on every request except `/actuator`, `/v3/api-docs`, `/swagger-ui`), `AuthContext` (role/service-caller checks called explicitly at the top of each controller method — no Spring Security, no annotation magic). `401 UNAUTHENTICATED` / `403 PERMISSION_DENIED` flow through the existing envelope.
+- `IdentityServiceClient` — now routes through the Gateway (`GATEWAY_URL`, was direct to identity-access-service) carrying a self-minted Service JWT; bounded-timeout (2s/5s); failures surface as `503 DEPENDENCY_UNAVAILABLE`.
 - Lease business rules in `LeaseService`: date validation, tenant validation, date-overlap check (Rule 1, on create *and* re-checked on activation), lease-status transition guard.
-- The three ✅ endpoints in §3's tables above (24 tests passing, `./mvnw clean verify` green).
+- The five ✅ endpoints in §3's tables above, all JWT-protected (31 tests passing, `./mvnw clean verify` green).
 
 ## 6. Known gaps / open follow-ups
 
-- **JWT/role authorization is not enforced anywhere in this service** — see §8 for the now-ratified org-wide standard and the full implementation checklist for this service. Don't assume auth is handled; raise it before shipping past internal dev/testing.
+- **No real Gateway public key yet.** JWT verification (§8) is fully implemented but has never been tested against an actual Gateway — there isn't one in this repo set. Until `GATEWAY_JWT_PUBLIC_KEY` is set to a real value, this service silently generates and verifies against its own ephemeral keypair, which means it currently accepts *nothing* signed by a real Gateway and *only* tokens minted by `TestJwtTokens` in tests. Revisit as soon as the Gateway team publishes a real key.
 - **No `Occupant`/physical-occupancy entity yet** — endpoint group B (§3) is unbuilt. The internal `validate` endpoint is a stand-in, backed by `Lease.tenantId`, and should be repointed at `Occupant` once it exists.
 - **Multi-Occupancy Capacity Check (Rule 2)** and the **Maintenance Relocation Protocol (Rule 4)** are not implemented — both depend on `property-unit-service` integration (capacity limits, maintenance-status webhook/event) that hasn't been built.
 - **No Testcontainers/Postgres integration suite** — tests run against H2 with Hibernate `ddl-auto`, not the real Flyway-managed schema. Flyway migrations are exercised only when the service actually boots against PostgreSQL (e.g. via Docker Compose).
-- **No Postman collection or API Contract Registry entry yet** for this service's endpoints, despite §4 requiring both.
+- **No Postman collection or API Contract Registry entry yet** for this service's endpoints, despite §4 requiring both — now also needs to cover the `Authorization: Bearer <JWT>` requirement on every example.
+- **Role list is provisional.** `MANAGER`/`RESIDENT`/`OWNER` come from this doc's own endpoint contract (§3), not a shared, ratified list of role names from Group 1 — confirm exact spelling/casing once Identity Access publishes one, since `AuthContext.requireRole` does an exact string match.
 
 ## 7. Repository & workflow conventions
 
-- Repo: [github.com/jtharindudhanushka/lease-occupancy-service](https://github.com/jtharindudhanushka/lease-occupancy-service), service files at repo root (not nested in a subfolder).
+- Repo: [github.com/ams-mit/lease-occupancy-service](https://github.com/ams-mit/lease-occupancy-service) (moved from a personal account into the `ams-mit` org), service files at repo root (not nested in a subfolder).
 - **Git flow going forward:** feature branch → push → open a PR against `main` → review/merge on GitHub. (The first four increments — init, Swagger, Lease APIs, internal occupancy APIs — were fast-forward-merged directly to `main` before this convention was adopted; that history is left as-is rather than rewritten.)
 - Conventional-commit-style messages (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `build:`, `refactor:`), one logical change per commit.
 - Every change is verified with `./mvnw clean verify` before committing.
@@ -184,7 +184,9 @@ Implemented (on `main`, all pushed to GitHub):
 
 ## 8. JWT Authentication & Security Standard (org-wide, ratified)
 
-Full spec: [Project_A_JWT_Authentication_and_Security_Standard.md](Project_A_JWT_Authentication_and_Security_Standard.md) — **read it in full before implementing anything below.** This section is a lease-occupancy-service-specific summary + task list, not a replacement for the source doc.
+**Status: ✅ implemented in this service**, except the one external dependency nothing here can fix on its own — a real Gateway public key (§6).
+
+Full spec: [Project_A_JWT_Authentication_and_Security_Standard.md](Project_A_JWT_Authentication_and_Security_Standard.md) — **read it in full before changing anything below.** This section is a lease-occupancy-service-specific summary + implementation record, not a replacement for the source doc.
 
 ### 8.1 The model, in one paragraph
 
@@ -198,31 +200,35 @@ Everything goes through the Gateway — including internal service-to-service ca
 ### 8.3 Implementation checklist for lease-occupancy-service
 
 **Keys & config**
-- [ ] Generate an RSA keypair for `lease-occupancy-service` (`SERVICE_JWT_PRIVATE_KEY` — ours only; never shared). Public key gets registered with whoever owns the Gateway.
-- [ ] Obtain the **Gateway's public key** (`GATEWAY_JWT_PUBLIC_KEY`) once the Gateway team publishes it — until then, use a locally-generated dev keypair as a placeholder and flag it clearly as non-production.
-- [ ] New env vars: `SERVICE_NAME=lease-occupancy-service`, `JWT_ALGORITHM=RS256`, `GATEWAY_JWT_PUBLIC_KEY`, `SERVICE_JWT_PRIVATE_KEY`, `SERVICE_JWT_EXPIRES_IN=5m`.
-- [ ] Private keys: env var only, never a committed file. Add `*.pem`/`*.key` to `.gitignore` defensively even though we don't plan to commit key files. Add a `.env.example` with placeholders.
+- [x] RSA keypair handling for `lease-occupancy-service` — `JwtKeyConfig` reads `SERVICE_JWT_PRIVATE_KEY` (PEM/PKCS8); falls back to an ephemeral generated keypair with a loud warning if unset. Public key still needs to be **registered with whoever owns the Gateway** once we have one (manual step, not code).
+- [ ] Obtain the real **Gateway's public key** (`GATEWAY_JWT_PUBLIC_KEY`) — blocked on the Gateway team; tracked in §6, not fixable from this repo.
+- [x] Env vars: `SERVICE_NAME`, `GATEWAY_JWT_PUBLIC_KEY`, `SERVICE_JWT_PRIVATE_KEY`, `SERVICE_JWT_EXPIRES_IN_SECONDS`, `GATEWAY_URL` — see `.env.example`. (Algorithm is hardcoded RS256 rather than a separate `JWT_ALGORITHM` var, since jjwt's API ties the signer to a concrete algorithm anyway.)
+- [x] Private keys: env var only. `*.pem`/`*.key`/`.env` added to `.gitignore` defensively. `.env.example` has placeholders + `openssl` commands to generate a real keypair.
 
 **Dependency**
-- [ ] Add an RS256-capable JWT library (`io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson`, or Nimbus JOSE+JWT).
+- [x] `io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson` 0.12.6.
 
-**Inbound verification (new `JwtAuthenticationFilter`, alongside the existing `RequestIdFilter`)**
-- [ ] Parse `Authorization: Bearer <JWT>`; reject missing/malformed → `401`.
-- [ ] Verify signature with the Gateway public key, algorithm must be RS256 → `401` on failure.
-- [ ] Check `exp` → `401` if expired/missing.
-- [ ] Branch on `type`:
-  - `user` → extract `sub` (userId) + `roles`; enforce per-endpoint role requirements from §3A's Auth column (`MANAGER`, or `MANAGER`/`RESIDENT` once §3A's `GET /{leaseId}` is built) → `403` if role not allowed.
-  - `service` → extract `sub` (calling service name); enforce the per-endpoint allow-list from §3C's table (e.g. only `operations-service` may call `/validate`) → `403` if not allowed.
-- [ ] Unregistered/unexpected `type`, or a User JWT used where a Service JWT is required (or vice versa) → `401`.
-- [ ] Wire `401`/`403` through the existing `ApiResponse`/`ApiError` envelope (§4) — don't let Spring Security's default bodies leak through if `spring-boot-starter-security` is added.
+**Inbound verification (`JwtAuthenticationFilter`, ordered right after `RequestIdFilter`)**
+- [x] Missing/malformed `Authorization` header → `401 UNAUTHENTICATED`.
+- [x] Signature verified against the Gateway public key (RS256); any `JwtException` (including expiry, since jjwt checks `exp` during parsing) → `401 UNAUTHENTICATED`.
+- [x] Branches on `type`:
+  - `user` → `AuthContext.requireRole(role)`, called explicitly at the top of each `LeaseController` method → `403 PERMISSION_DENIED` if the role doesn't match.
+  - `service` → `AuthContext.requireServiceCaller(...)`, called explicitly at the top of each `InternalOccupancyController` method (`operations-service` for `/validate`, `billing-payment-service` for `/active-billing`) → `403 PERMISSION_DENIED` if not allowed.
+- [x] Unrecognized `type`, or the wrong token shape for an endpoint → rejected (`InvalidTokenException`/`ForbiddenException`).
+- [x] `401`/`403` flow through the existing `ApiResponse`/`ApiError` envelope — the filter hands exceptions to Spring's `HandlerExceptionResolver` so `GlobalExceptionHandler` handles them exactly like a controller-thrown exception (a filter's own exceptions otherwise bypass `@RestControllerAdvice` entirely). No Spring Security in this service — authorization is explicit `AuthContext` calls, not annotations.
+- `/actuator/**`, `/v3/api-docs/**`, `/swagger-ui/**` are exempted (`shouldNotFilter`) — infra/tooling endpoints stay open.
 
-**Outbound (fixing `IdentityServiceClient`)**
-- [ ] Mint a Service JWT (`sub=lease-occupancy-service`, `type=service`, 5 min `exp`) signed with our private key before calling identity-access-service.
-- [ ] Point the call at the **Gateway's** base URL, not identity-access-service directly (`IDENTITY_SERVICE_URL` needs to become a Gateway URL, or be replaced with a `GATEWAY_URL`).
+**Outbound (`IdentityServiceClient`)**
+- [x] Mints a Service JWT (`sub=lease-occupancy-service`, `type=service`, configurable TTL) via `JwtService.mintServiceToken()` before every call.
+- [x] Calls the Gateway's base URL (`gatewayRestClient`, `GATEWAY_URL`) rather than identity-access-service directly, assuming the Gateway proxies `/api/v1/internal/users/**` at the same path — **unverified assumption**, adjust once real Gateway routing conventions are published.
 
 **Docs**
-- [ ] Update §3C's endpoint table and OpenApiConfig's `internal` SpringDoc group to document the Service JWT requirement (currently documents no auth).
-- [ ] Update the API Contract Registry entry (§4) once it exists (§6 already flags it doesn't yet).
+- [x] §3C's endpoint table and `OpenApiConfig`'s security requirement (now declared globally, both groups) updated to reflect the Service JWT requirement.
+- [ ] API Contract Registry entry — still doesn't exist for this service at all (§6).
+
+**Tests**
+- [x] `TestJwtTokens` (test-only) mints tokens signed with a fixed test RSA keypair matching `app.jwt.gateway-public-key` in `src/test/resources/application.yml`, so `@WebMvcTest` slices can exercise real JWT verification without a live Gateway.
+- [x] Coverage: missing token, expired token, wrong role, wrong calling service, right role/service — across both `LeaseControllerTest` and `InternalOccupancyControllerTest`.
 
 ### 8.4 Explicitly out of scope for this service
 
