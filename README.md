@@ -1,7 +1,7 @@
 # lease-occupancy-service
 
 Owns lease and occupancy records for the Apartment Management System (Group 2 — Property & Occupancy).
-See [../AGENTS.md](../AGENTS.md) for full project and service context.
+See [AGENTS.md](AGENTS.md) for full project and service context.
 
 ## Stack
 
@@ -41,5 +41,5 @@ Intended to run as part of the project's shared `docker-compose.yml` alongside i
 ## Status
 
 Repository scaffold only (Sprint 2 runway). No entities, controllers, or Flyway migrations
-have been implemented yet — see [../AGENTS.md](../AGENTS.md) §3 for the planned domain
+have been implemented yet — see [AGENTS.md](AGENTS.md) §3 for the planned domain
 entities, business rules, and endpoint contract.
