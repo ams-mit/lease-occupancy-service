@@ -1,5 +1,6 @@
 package com.ams.leaseoccupancy.controller;
 
+import com.ams.leaseoccupancy.config.AuthContext;
 import com.ams.leaseoccupancy.config.RequestContext;
 import com.ams.leaseoccupancy.dto.ApiResponse;
 import com.ams.leaseoccupancy.dto.LeaseCreateRequest;
@@ -29,16 +30,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Manager-facing lease endpoints (requires the MANAGER role once JWT authorization is
- * wired in — see AGENTS.md §3; not yet enforced by this service, tracked as a follow-up).
- */
+/** Manager-facing lease endpoints — every operation requires the MANAGER role (AGENTS.md §3A). */
 @RestController
 @RequestMapping("/api/v1/leases")
 @Tag(name = "Leases", description = "Contractual lease lifecycle")
 public class LeaseController {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String ROLE_MANAGER = "MANAGER";
 
     private final LeaseService leaseService;
 
@@ -51,6 +50,7 @@ public class LeaseController {
     @Operation(summary = "Create a lease", description =
             "Validates the tenant with identity-access-service and checks for a schedule conflict on the unit.")
     public ApiResponse<LeaseResponse> createLease(@Valid @RequestBody LeaseCreateRequest request) {
+        AuthContext.requireRole(ROLE_MANAGER);
         Lease lease = leaseService.createLease(request);
         return ApiResponse.success("Lease created successfully", LeaseResponse.from(lease), RequestContext.getRequestId());
     }
@@ -63,6 +63,7 @@ public class LeaseController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
+        AuthContext.requireRole(ROLE_MANAGER);
         Page<Lease> result = leaseService.listLeases(status, activeOn, PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE)));
         List<LeaseResponse> data = result.map(LeaseResponse::from).getContent();
 
@@ -75,6 +76,7 @@ public class LeaseController {
     public ApiResponse<LeaseResponse> updateStatus(
             @PathVariable UUID leaseId, @Valid @RequestBody LeaseStatusUpdateRequest request) {
 
+        AuthContext.requireRole(ROLE_MANAGER);
         Lease lease = leaseService.updateStatus(leaseId, request);
         return ApiResponse.success("Lease status updated successfully", LeaseResponse.from(lease), RequestContext.getRequestId());
     }
