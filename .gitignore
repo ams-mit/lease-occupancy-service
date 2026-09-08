@@ -4,6 +4,11 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Secrets — JWT keys must never be committed (Project_A_JWT_Authentication_and_Security_Standard.md §35) ###
+*.pem
+*.key
+.env
+
 ### OS ###
 .DS_Store
 Thumbs.db

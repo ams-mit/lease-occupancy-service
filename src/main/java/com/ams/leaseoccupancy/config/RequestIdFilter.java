@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.MDC;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -15,9 +17,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Reads the incoming X-Request-ID (generating one if the caller omitted it), echoes it
  * back on the response, and makes it available via {@link RequestContext} for the
  * duration of the request so it can be logged and included in the response envelope,
- * per API-STANDARD-v1 §8.
+ * per API-STANDARD-v1 §8. Ordered ahead of {@link JwtAuthenticationFilter} so even a
+ * rejected (401/403) request gets a trace ID.
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
