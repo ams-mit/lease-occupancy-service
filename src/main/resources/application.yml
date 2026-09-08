@@ -43,3 +43,11 @@ springdoc:
     tags-sorter: alpha
     operations-sorter: method
   show-actuator: false
+
+app:
+  services:
+    identity-base-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+    property-base-url: ${PROPERTY_SERVICE_URL:http://localhost:8083}
+    # Bounded inter-service call timeouts per API-STANDARD-v1 §29 — never wait indefinitely on a dependency.
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000

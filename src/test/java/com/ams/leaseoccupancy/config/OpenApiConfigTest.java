@@ -42,4 +42,12 @@ class OpenApiConfigTest {
         assertThat(publicDocs.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(internalDocs.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
+
+    @Test
+    void publicGroupDocumentsLeaseEndpoints() {
+        ResponseEntity<String> publicDocs = restTemplate.getForEntity("/v3/api-docs/public", String.class);
+
+        assertThat(publicDocs.getBody()).contains("/api/v1/leases");
+        assertThat(publicDocs.getBody()).contains("bearerAuth");
+    }
 }
