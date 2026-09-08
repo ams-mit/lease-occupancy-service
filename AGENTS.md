@@ -2,7 +2,7 @@
 
 Context file for AI-assisted development on this project. This is a **group project** with four teams building independent microservices behind a shared API Gateway. This document captures the project-wide architecture and, in detail, the service owned by this developer: **`lease-occupancy-service`** (Group 2).
 
-Role of the person driving this repo: **Backend Developer**, responsible for `lease-occupancy-service`. Tasks/implementation instructions will be provided later — this file is context only, no implementation has started yet.
+Role of the person driving this repo: **Backend Developer**, responsible for `lease-occupancy-service`. See §6 for current implementation status and §7 for the repo/workflow conventions.
 
 ---
 
@@ -79,38 +79,43 @@ Because user/resident profiles belong to Group 1, this service stores **syntheti
 
 ### Endpoint contract (13 endpoints)
 
+Status legend: ✅ implemented · ⏳ not yet built.
+
 **A. Contractual Leases (public, gateway-routed)**
 
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| POST | `/api/v1/leases` | Manager | Validates tenant ID with Group 1; checks schedule conflicts |
-| GET | `/api/v1/leases` | Manager | Filterable by active dates and status |
-| GET | `/api/v1/leases/{leaseId}` | Manager or Resident | Resident access only if their `userId` appears as occupant/tenant on this lease |
-| GET | `/api/v1/leases/units/{unitId}` | Manager or Owner | Chronological lease history for a unit |
-| PATCH | `/api/v1/leases/{leaseId}/status` | Manager | Activate / terminate / complete |
+| | Method | Path | Auth | Notes |
+|---|---|---|---|---|
+| ✅ | POST | `/api/v1/leases` | Manager* | Validates tenant ID with Group 1; checks schedule conflicts |
+| ✅ | GET | `/api/v1/leases` | Manager* | Filterable by status and an active-on date, paginated |
+| ⏳ | GET | `/api/v1/leases/{leaseId}` | Manager or Resident | Resident access only if their `userId` appears as occupant/tenant on this lease |
+| ⏳ | GET | `/api/v1/leases/units/{unitId}` | Manager or Owner | Chronological lease history for a unit |
+| ✅ | PATCH | `/api/v1/leases/{leaseId}/status` | Manager* | Activate / terminate / complete, with transition + re-overlap checks |
 
-**B. Physical Occupancies (public, gateway-routed)**
+**B. Physical Occupancies (public, gateway-routed)** — ⏳ not started (no `Occupant` entity yet)
 
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| POST | `/api/v1/occupancies` | Manager | Registers physical arrival under active lease/ownership |
-| GET | `/api/v1/occupancies/units/{unitId}` | All roles | Current occupants of a unit |
-| GET | `/api/v1/occupancies/residents/{residentId}` | All roles | Occupancy history for a resident |
-| PATCH | `/api/v1/occupancies/{occupancyId}/status` | Manager | Soft-deactivate (→ `INACTIVE`), never hard-delete |
+| | Method | Path | Auth | Notes |
+|---|---|---|---|---|
+| ⏳ | POST | `/api/v1/occupancies` | Manager | Registers physical arrival under active lease/ownership |
+| ⏳ | GET | `/api/v1/occupancies/units/{unitId}` | All roles | Current occupants of a unit |
+| ⏳ | GET | `/api/v1/occupancies/residents/{residentId}` | All roles | Occupancy history for a resident |
+| ⏳ | PATCH | `/api/v1/occupancies/{occupancyId}/status` | Manager | Soft-deactivate (→ `INACTIVE`), never hard-delete |
 
 **C. Internal service-to-service (private network, no JWT)**
 
-| Method | Path | Consumer | Purpose |
-|---|---|---|---|
-| GET | `/api/v1/internal/occupancies/active-billing` | `billing-payment-service` (Group 3) | Active units + billing targets for recurring invoicing |
-| GET | `/api/v1/internal/occupancies/validate` | `operations-service` (Group 4) | Check tenant actively resides in unit before facility booking / maintenance request |
+| | Method | Path | Consumer | Purpose |
+|---|---|---|---|---|
+| ✅ | GET | `/api/v1/internal/occupancies/active-billing` | `billing-payment-service` (Group 3) | Active units + billing targets for recurring invoicing |
+| ✅ | GET | `/api/v1/internal/occupancies/validate` | `operations-service` (Group 4) | Check tenant actively resides in unit before facility booking / maintenance request. Currently backed by `Lease` (tenant-of-record); should switch to `Occupant` once B exists |
 
 **D. System operations (public/actuator)**
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/actuator/health` | App + DB health, used by Docker Compose |
-| GET | `/actuator/info` | Deployment metadata for Gateway |
+| | Method | Path | Notes |
+|---|---|---|---|
+| ✅ | GET | `/actuator/health` | App + DB health, used by Docker Compose |
+| ✅ | GET | `/actuator/info` | Deployment metadata for Gateway |
+| ✅ | GET | `/swagger-ui.html`, `/v3/api-docs` | SpringDoc, split into `public`/`internal` groups |
+
+*Manager-role enforcement is **not yet wired in** — no JWT filter/library exists in this service yet (see §6).
 
 ### Cross-team integration
 
@@ -148,4 +153,27 @@ Full detail in [API-STANDARD-v1.md](API-STANDARD-v1.md). Key points every endpoi
 
 ## 5. Status
 
-No code has been written yet. This file exists purely to capture project + service context ahead of task-by-task implementation work to follow.
+Implemented (on `main`, all pushed to GitHub):
+
+- Spring Boot 3.5.16 / Java 21 project scaffold, port `8084`, Controller-Service-Repository package layout.
+- SpringDoc/Swagger, split into `public` (JWT-scheme-documented) and `internal` (no auth) groups.
+- Flyway `V1__create_leases_schema.sql` + `Lease` entity/repository.
+- Shared `ApiResponse`/`ApiError`/`PaginationMeta` envelope, `BusinessException` hierarchy → stable error codes, `GlobalExceptionHandler`, `X-Request-ID` filter/`RequestContext` — the common infrastructure every future endpoint reuses.
+- `IdentityServiceClient` — bounded-timeout (2s/5s) REST call to identity-access-service's internal user-validation endpoint; failures surface as `503 DEPENDENCY_UNAVAILABLE`.
+- Lease business rules in `LeaseService`: date validation, tenant validation, date-overlap check (Rule 1, on create *and* re-checked on activation), lease-status transition guard.
+- The three ✅ endpoints in §3's tables above (24 tests passing, `./mvnw clean verify` green).
+
+## 6. Known gaps / open follow-ups
+
+- **JWT/role authorization is not enforced anywhere in this service.** Endpoints are documented as requiring `MANAGER` (or other roles) in Swagger, but nothing actually checks a token yet — there's no shared JWT filter/library from Group 1 to build against. Don't assume auth is handled; raise it before shipping past internal dev/testing.
+- **No `Occupant`/physical-occupancy entity yet** — endpoint group B (§3) is unbuilt. The internal `validate` endpoint is a stand-in, backed by `Lease.tenantId`, and should be repointed at `Occupant` once it exists.
+- **Multi-Occupancy Capacity Check (Rule 2)** and the **Maintenance Relocation Protocol (Rule 4)** are not implemented — both depend on `property-unit-service` integration (capacity limits, maintenance-status webhook/event) that hasn't been built.
+- **No Testcontainers/Postgres integration suite** — tests run against H2 with Hibernate `ddl-auto`, not the real Flyway-managed schema. Flyway migrations are exercised only when the service actually boots against PostgreSQL (e.g. via Docker Compose).
+- **No Postman collection or API Contract Registry entry yet** for this service's endpoints, despite §4 requiring both.
+
+## 7. Repository & workflow conventions
+
+- Repo: [github.com/jtharindudhanushka/lease-occupancy-service](https://github.com/jtharindudhanushka/lease-occupancy-service), service files at repo root (not nested in a subfolder).
+- **Git flow going forward:** feature branch → push → open a PR against `main` → review/merge on GitHub. (The first four increments — init, Swagger, Lease APIs, internal occupancy APIs — were fast-forward-merged directly to `main` before this convention was adopted; that history is left as-is rather than rewritten.)
+- Conventional-commit-style messages (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `build:`, `refactor:`), one logical change per commit.
+- Every change is verified with `./mvnw clean verify` before committing.
