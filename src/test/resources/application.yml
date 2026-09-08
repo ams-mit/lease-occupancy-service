@@ -10,3 +10,18 @@ spring:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
+  flyway:
+    # Flyway migrations target real PostgreSQL syntax; tests use Hibernate
+    # ddl-auto against H2 instead. A Testcontainers-based Postgres suite is the
+    # natural follow-up for migration-accurate integration tests.
+    enabled: false
+
+# NOTE: this file replaces application.yml entirely on the test classpath (Spring Boot
+# only loads one "application.yml", and test-classes precedes classes on the test
+# classpath) — so service client config needed by @SpringBootTest also has to live here.
+app:
+  services:
+    identity-base-url: http://localhost:8081
+    property-base-url: http://localhost:8083
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
