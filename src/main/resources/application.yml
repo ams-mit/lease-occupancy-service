@@ -45,9 +45,18 @@ springdoc:
   show-actuator: false
 
 app:
+  jwt:
+    # Per Project_A_JWT_Authentication_and_Security_Standard.md / AGENTS.md §8.
+    service-name: ${SERVICE_NAME:lease-occupancy-service}
+    # PEM-encoded (X.509 SubjectPublicKeyInfo). Verifies every incoming Gateway-signed request.
+    gateway-public-key: ${GATEWAY_JWT_PUBLIC_KEY:}
+    # PEM-encoded (PKCS8). Signs the Service JWT this service mints for outbound calls.
+    service-private-key: ${SERVICE_JWT_PRIVATE_KEY:}
+    service-jwt-ttl-seconds: ${SERVICE_JWT_EXPIRES_IN_SECONDS:300}
   services:
-    identity-base-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
-    property-base-url: ${PROPERTY_SERVICE_URL:http://localhost:8083}
+    # All outbound inter-service calls route through the Gateway (never directly to a
+    # sibling service) — Service A -> Gateway -> Service B, per the JWT standard.
+    gateway-base-url: ${GATEWAY_URL:http://localhost:8080}
     # Bounded inter-service call timeouts per API-STANDARD-v1 §29 — never wait indefinitely on a dependency.
     connect-timeout-ms: 2000
     read-timeout-ms: 5000

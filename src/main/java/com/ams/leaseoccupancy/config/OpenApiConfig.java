@@ -10,10 +10,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * SpringDoc OpenAPI setup. Endpoints are split into two documentation groups because
- * they have different audiences and security requirements per the API contract:
- * public/gateway-routed lease and occupancy APIs (JWT-secured) vs. internal
- * service-to-service APIs (private network only, no JWT).
+ * SpringDoc OpenAPI setup. Endpoints are split into two documentation groups by audience —
+ * public/gateway-routed lease and occupancy APIs (User JWT) vs. internal service-to-service
+ * APIs (Service JWT) — but per the JWT standard (AGENTS.md §8) both carry a Gateway-issued
+ * bearer token, so the security requirement is declared globally rather than per-group.
  */
 @Configuration
 public class OpenApiConfig {
@@ -32,17 +32,18 @@ public class OpenApiConfig {
                         .addSecuritySchemes(BEARER_SECURITY_SCHEME, new SecurityScheme()
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
-                                .bearerFormat("JWT")));
+                                .bearerFormat("JWT")
+                                .description("Gateway-issued JWT — a User JWT (type=user) on public endpoints, "
+                                        + "a Service JWT (type=service) on internal ones.")))
+                .addSecurityItem(new SecurityRequirement().addList(BEARER_SECURITY_SCHEME));
     }
 
     @Bean
     public GroupedOpenApi publicApi() {
         return GroupedOpenApi.builder()
                 .group("public")
-                .displayName("Public API (Gateway-routed, JWT required)")
+                .displayName("Public API (Gateway-routed, User JWT required)")
                 .pathsToMatch("/api/v1/leases/**", "/api/v1/occupancies/**")
-                .addOpenApiCustomizer(openApi -> openApi.addSecurityItem(
-                        new SecurityRequirement().addList(BEARER_SECURITY_SCHEME)))
                 .build();
     }
 
@@ -50,7 +51,7 @@ public class OpenApiConfig {
     public GroupedOpenApi internalApi() {
         return GroupedOpenApi.builder()
                 .group("internal")
-                .displayName("Internal API (private network only, no JWT)")
+                .displayName("Internal API (Gateway-routed, Service JWT required)")
                 .pathsToMatch("/api/v1/internal/**")
                 .build();
     }

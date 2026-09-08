@@ -20,8 +20,51 @@ spring:
 # only loads one "application.yml", and test-classes precedes classes on the test
 # classpath) — so service client config needed by @SpringBootTest also has to live here.
 app:
+  jwt:
+    service-name: lease-occupancy-service
+    service-jwt-ttl-seconds: 300
+    # Fixed test-only RSA keypair (matches the private key in TestJwtTokens, which mints
+    # fixture tokens as if it were the Gateway). Never used outside tests.
+    gateway-public-key: |
+      -----BEGIN PUBLIC KEY-----
+      MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAphUq6FGFGCzso7gHKDaU
+      2274ds50qYMeZjSRTUMJOrtwMn+cKbfJcuVO9rN9/VfePkU/kKvMzxCyVYlBWZGc
+      JkutOAQuwQUt2+FmAYePKhag4u+GXmblz5/2x3e1wXqnWQHc2IY9/aLUd9ny3+1f
+      8JJuDcX/u+sOwa6LFwLorwz0JozLAafq333KSqzSxM911DheMsrJDw61z05xPslk
+      76e1ZwfLD/OCfx3neAPefVaHrJ3mADf5sxjHbJ760Gl9kLoJVwfsi3jzFOp/hMIw
+      mVANOUU2RzbHmxzak/xXknfywePTKJ1bURrQ8mL1gHpFele5+tmP8dmoBOjXokqg
+      vwIDAQAB
+      -----END PUBLIC KEY-----
+    service-private-key: |
+      -----BEGIN PRIVATE KEY-----
+      MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCmFSroUYUYLOyj
+      uAcoNpTbbvh2znSpgx5mNJFNQwk6u3Ayf5wpt8ly5U72s339V94+RT+Qq8zPELJV
+      iUFZkZwmS604BC7BBS3b4WYBh48qFqDi74ZeZuXPn/bHd7XBeqdZAdzYhj39otR3
+      2fLf7V/wkm4Nxf+76w7BrosXAuivDPQmjMsBp+rffcpKrNLEz3XUOF4yyskPDrXP
+      TnE+yWTvp7VnB8sP84J/Hed4A959VoesneYAN/mzGMdsnvrQaX2QuglXB+yLePMU
+      6n+EwjCZUA05RTZHNsebHNqT/FeSd/LB49MonVtRGtDyYvWAekV6V7n62Y/x2agE
+      6NeiSqC/AgMBAAECggEAH9txloyEhiWf4qubG9iUZx77I/boI9fVze8JbBOOwqhP
+      ljAqKUpqptJbejDl2uGu7Kzly39Y0uM2AfhJA8BNfn8Ho/YRbc7rhADRSzvQd1dN
+      1xnw4UzFijT55jsNLyay0Pztes8NNwizzqWM0+05ePDtkVDIhChLdVVgsrJJJcJ7
+      z7Yd3HbXZmosUZjXN5wGKyFZU52i0/Mp87Kr3ty6GmAIEMSHtUTHMjmfgn38Peis
+      6OYIGz8mjeH4V/YlE/NBRwi5SMaiVk1VxlvMJKNhcbgdSaVNRXEmhLnFKhE54ScX
+      VxFyAk2DrPCfjqOlOwH+M9m1Kcjvw8kPanaMqUf3SQKBgQDkosw8Xqzp4k11IqCA
+      GNvlBeU/YfcrdCPYMxOV4oFcQk6HtMcs/nWJACWyHgu2LoZ4aEwzCLMnMyjDuxS5
+      6aM8a7+BiKRyFNfjVE0NvkP+WhvrHbnRKEw9vbyc5NMkVU3jvouqvzlmUfbAoGhd
+      oThrISCEKvrRwQBSEoetaE1cawKBgQC59cs8nh6VRuAp6EOIz6+YEqgnCyvTK/kF
+      WAmVf/z99qMH7K+X5uu1YJG9kOwwSvcu5r8I+uoZH2Espcems2inxlh29GkTheOC
+      PzVaJNSKE4LCgH+1Iy8gXBOxlLhXlN/CcJ+tAkuprhro+JNJo6/git2gkng3uxXq
+      XyqgceWh/QKBgQCgT4Xkzn1vgL3O4/il2MhWTUvwpUApt8VqUmXpMmiBx/xIKvl9
+      Eu5WoUPNIEQV+YlP49GJ9w+m7LgohYSC1s8eDm645JZpZzP4saNVf5MtRQFOWglw
+      HlFW+TLGz6s8TpPOnExR7MLSe6YIanDDNcfZVeD2yywS5sDSyytW60tTAQKBgGIC
+      buxy9fF9WnYb6UQ5GfYPlzqEw8NXwLaVUO/PdhqwG/r4Pw/TcFW3IPkFYcaOLDs2
+      +GaWQD2fcUrj0RdGJZmPi16esKbOgTtLbyYklTR01g0HRsfEVHk8rlCA7quSVmCX
+      lUDNHe2/SoWRRaehMvgomGih6eSNoR5WrBPGE95NAoGAIlx4WZtq20z5N9QF3Zcf
+      Iibk+m38+681uRhNLkMWPh2D9KcLR3gZl9dMbOyGr3WuM+OUslWFvt2+TBk35Gs3
+      T0NdO1QrW+pAKGphMqpBeCLx+j7c01AszZ9ijcXsmNV+XXy/I9Zoj1o0hssdgBHA
+      t5H4B3oHJ7PmqFgwifHpHAA=
+      -----END PRIVATE KEY-----
   services:
-    identity-base-url: http://localhost:8081
-    property-base-url: http://localhost:8083
+    gateway-base-url: http://localhost:8081
     connect-timeout-ms: 2000
     read-timeout-ms: 5000

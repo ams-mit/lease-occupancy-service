@@ -9,34 +9,43 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ams.leaseoccupancy.config.JwtAuthenticationFilter;
+import com.ams.leaseoccupancy.config.JwtKeyConfig;
+import com.ams.leaseoccupancy.config.JwtService;
+import com.ams.leaseoccupancy.config.RequestIdFilter;
+import com.ams.leaseoccupancy.config.TestJwtTokens;
 import com.ams.leaseoccupancy.entity.Lease;
 import com.ams.leaseoccupancy.entity.LeaseStatus;
 import com.ams.leaseoccupancy.exception.LeaseConflictException;
 import com.ams.leaseoccupancy.exception.LeaseNotFoundException;
 import com.ams.leaseoccupancy.service.LeaseService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @WebMvcTest(LeaseController.class)
+@Import({JwtKeyConfig.class, JwtService.class, JwtAuthenticationFilter.class, RequestIdFilter.class})
 class LeaseControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
     @MockitoBean
     private LeaseService leaseService;
+
+    private static MockHttpServletRequestBuilder asManager(MockHttpServletRequestBuilder request) {
+        return request.header(HttpHeaders.AUTHORIZATION, "Bearer " + TestJwtTokens.userToken("mgr-1", "MANAGER"));
+    }
 
     @Test
     void createLease_returns201WithEnvelope() throws Exception {
@@ -47,11 +56,50 @@ class LeaseControllerTest {
                 {"unitId":"%s","tenantId":"%s","startDate":"%s","endDate":"%s"}
                 """.formatted(saved.getUnitId(), saved.getTenantId(), saved.getStartDate(), saved.getEndDate());
 
-        mockMvc.perform(post("/api/v1/leases").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(asManager(post("/api/v1/leases")).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void createLease_returns401_whenNoToken() throws Exception {
+        String body = """
+                {"unitId":"%s","tenantId":"%s","startDate":"2027-01-01","endDate":"2027-06-01"}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/leases").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void createLease_returns403_whenTokenLacksManagerRole() throws Exception {
+        String body = """
+                {"unitId":"%s","tenantId":"%s","startDate":"2027-01-01","endDate":"2027-06-01"}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/leases")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestJwtTokens.userToken("res-1", "RESIDENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    void createLease_returns401_whenTokenExpired() throws Exception {
+        String body = """
+                {"unitId":"%s","tenantId":"%s","startDate":"2027-01-01","endDate":"2027-06-01"}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/leases")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestJwtTokens.expiredUserToken("mgr-1", "MANAGER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
     }
 
     @Test
@@ -60,7 +108,7 @@ class LeaseControllerTest {
                 {"tenantId":"%s","startDate":"2027-01-01","endDate":"2027-06-01"}
                 """.formatted(UUID.randomUUID());
 
-        mockMvc.perform(post("/api/v1/leases").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(asManager(post("/api/v1/leases")).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
@@ -74,7 +122,7 @@ class LeaseControllerTest {
                 {"unitId":"%s","tenantId":"%s","startDate":"2027-01-01","endDate":"2027-06-01"}
                 """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
-        mockMvc.perform(post("/api/v1/leases").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(asManager(post("/api/v1/leases")).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("OCCUPANCY_CONFLICT"));
     }
@@ -85,7 +133,7 @@ class LeaseControllerTest {
         when(leaseService.listLeases(eq(LeaseStatus.ACTIVE), eq(null), any()))
                 .thenReturn(new PageImpl<>(java.util.List.of(lease), PageRequest.of(0, 20), 1));
 
-        mockMvc.perform(get("/api/v1/leases").param("status", "ACTIVE"))
+        mockMvc.perform(asManager(get("/api/v1/leases")).param("status", "ACTIVE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("ACTIVE"))
                 .andExpect(jsonPath("$.pagination.totalElements").value(1));
@@ -96,7 +144,7 @@ class LeaseControllerTest {
         UUID leaseId = UUID.randomUUID();
         when(leaseService.updateStatus(eq(leaseId), any())).thenThrow(new LeaseNotFoundException(leaseId));
 
-        mockMvc.perform(patch("/api/v1/leases/{id}/status", leaseId)
+        mockMvc.perform(asManager(patch("/api/v1/leases/{id}/status", leaseId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
                 .andExpect(status().isNotFound())
