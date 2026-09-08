@@ -1,0 +1,12 @@
+# Test-only profile: an in-memory H2 database stands in for lease_db so the context
+# can load in CI/local test runs without a running PostgreSQL instance.
+spring:
+  datasource:
+    url: jdbc:h2:mem:lease_db_test;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
