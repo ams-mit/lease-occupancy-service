@@ -1,7 +1,9 @@
 package com.ams.leaseoccupancy.repository;
 
 import com.ams.leaseoccupancy.entity.Lease;
+import com.ams.leaseoccupancy.entity.LeaseStatus;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -28,4 +30,10 @@ public interface LeaseRepository extends JpaRepository<Lease, UUID>, JpaSpecific
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             @Param("excludeLeaseId") UUID excludeLeaseId);
+
+    /** Backs GET /api/v1/internal/occupancies/validate — is this tenant's lease on this unit ACTIVE? */
+    boolean existsByUnitIdAndTenantIdAndStatus(UUID unitId, UUID tenantId, LeaseStatus status);
+
+    /** Backs GET /api/v1/internal/occupancies/active-billing — every currently billable unit/tenant pair. */
+    List<Lease> findByStatus(LeaseStatus status);
 }

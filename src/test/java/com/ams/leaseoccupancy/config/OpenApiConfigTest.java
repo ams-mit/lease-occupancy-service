@@ -50,4 +50,15 @@ class OpenApiConfigTest {
         assertThat(publicDocs.getBody()).contains("/api/v1/leases");
         assertThat(publicDocs.getBody()).contains("bearerAuth");
     }
+
+    @Test
+    void internalGroupDocumentsOccupancyEndpoints_withoutRequiringBearerAuth() {
+        ResponseEntity<String> internalDocs = restTemplate.getForEntity("/v3/api-docs/internal", String.class);
+
+        assertThat(internalDocs.getBody()).contains("/api/v1/internal/occupancies/validate");
+        assertThat(internalDocs.getBody()).contains("/api/v1/internal/occupancies/active-billing");
+        // The bearerAuth scheme is always declared in components, but no internal operation
+        // should require it — that's the exact shape OpenApiConfig's public-group customizer adds.
+        assertThat(internalDocs.getBody()).doesNotContain("\"security\":[{\"bearerAuth\"");
+    }
 }
