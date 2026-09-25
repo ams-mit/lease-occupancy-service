@@ -10,6 +10,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -55,6 +56,10 @@ public class Lease {
 
     @Column(name = "custom_notes")
     private String customNotes;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 
     @OneToMany(mappedBy = "lease", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Occupant> occupants = new ArrayList<>();

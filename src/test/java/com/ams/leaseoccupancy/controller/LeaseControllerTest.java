@@ -151,6 +151,35 @@ class LeaseControllerTest {
                 .andExpect(jsonPath("$.error.code").value("LEASE_NOT_FOUND"));
     }
 
+    @Test
+    void validate_returnsSuccess_whenCalledByAuthorizedService() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        when(leaseService.isTenantActiveInUnit(tenantId, unitId)).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/leases/validate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestJwtTokens.serviceToken("operations-service"))
+                        .param("tenantId", tenantId.toString())
+                        .param("unitId", unitId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.active").value(true));
+    }
+
+    @Test
+    void validate_returnsSuccess_whenCalledByManager() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        when(leaseService.isTenantActiveInUnit(tenantId, unitId)).thenReturn(true);
+
+        mockMvc.perform(asManager(get("/api/v1/leases/validate"))
+                        .param("tenantId", tenantId.toString())
+                        .param("unitId", unitId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.active").value(true));
+    }
+
     private Lease sampleLease(LeaseStatus status) {
         Lease lease = new Lease();
         lease.setId(UUID.randomUUID());

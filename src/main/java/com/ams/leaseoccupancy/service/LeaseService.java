@@ -2,10 +2,13 @@ package com.ams.leaseoccupancy.service;
 
 import com.ams.leaseoccupancy.client.IdentityServiceClient;
 import com.ams.leaseoccupancy.client.IdentityUserValidation;
+import com.ams.leaseoccupancy.client.PropertyUnitServiceClient;
+import com.ams.leaseoccupancy.client.UnitCapacityResponse;
 import com.ams.leaseoccupancy.dto.LeaseCreateRequest;
 import com.ams.leaseoccupancy.dto.LeaseStatusUpdateRequest;
 import com.ams.leaseoccupancy.entity.Lease;
 import com.ams.leaseoccupancy.entity.LeaseStatus;
+import com.ams.leaseoccupancy.exception.CapacityLimitExceededException;
 import com.ams.leaseoccupancy.exception.InvalidLeaseDatesException;
 import com.ams.leaseoccupancy.exception.InvalidLeaseStatusTransitionException;
 import com.ams.leaseoccupancy.exception.InvalidTenantException;
@@ -22,18 +25,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Enforces the lease business rules: date validation, tenant validation,
- * date-overlap checks, activation prerequisites, and valid lease-status transitions.
+ * Enforces conflict-validation rules, interval overlap query engine,
+ * multi-occupancy capacity checks, and concurrency control during activation.
  */
 @Service
 public class LeaseService {
 
     private final LeaseRepository leaseRepository;
     private final IdentityServiceClient identityServiceClient;
+    private final PropertyUnitServiceClient propertyUnitServiceClient;
+    private final UnitLockService unitLockService;
 
-    public LeaseService(LeaseRepository leaseRepository, IdentityServiceClient identityServiceClient) {
+    public LeaseService(
+            LeaseRepository leaseRepository,
+            IdentityServiceClient identityServiceClient,
+            PropertyUnitServiceClient propertyUnitServiceClient,
+            UnitLockService unitLockService) {
         this.leaseRepository = leaseRepository;
         this.identityServiceClient = identityServiceClient;
+        this.propertyUnitServiceClient = propertyUnitServiceClient;
+        this.unitLockService = unitLockService;
     }
 
     @Transactional
@@ -47,7 +58,7 @@ public class LeaseService {
             throw new InvalidTenantException(request.tenantId());
         }
 
-        assertNoOverlappingActiveLease(request.unitId(), request.startDate(), request.endDate(), null);
+        validateUnitCapacityAndOverlap(request.unitId(), request.startDate(), request.endDate(), null);
 
         Lease lease = new Lease();
         lease.setUnitId(request.unitId());
@@ -75,20 +86,52 @@ public class LeaseService {
         LeaseStatus target = request.status();
         assertValidTransition(lease.getStatus(), target);
 
-        // Activation prerequisite: re-check for conflicts, since time has passed since creation
-        // and another lease may have become active on this unit in the meantime.
+        // Activation prerequisites with concurrency control:
+        // 1. Acquire pessimistic lock on the unit record to serialize concurrent activations
+        // 2. Execute interval overlap rule & multi-occupancy capacity check against property-unit-service
         if (target == LeaseStatus.ACTIVE) {
-            assertNoOverlappingActiveLease(lease.getUnitId(), lease.getStartDate(), lease.getEndDate(), lease.getId());
+            unitLockService.acquireUnitLock(lease.getUnitId());
+            validateUnitCapacityAndOverlap(lease.getUnitId(), lease.getStartDate(), lease.getEndDate(), lease.getId());
         }
 
         lease.setStatus(target);
         return leaseRepository.save(lease);
     }
 
-    private void assertNoOverlappingActiveLease(UUID unitId, LocalDate startDate, LocalDate endDate, UUID excludeLeaseId) {
-        if (leaseRepository.existsOverlappingActiveLease(unitId, startDate, endDate, excludeLeaseId)) {
-            throw new LeaseConflictException(
-                    "Unit " + unitId + " already has an active lease overlapping the requested dates");
+    /**
+     * Checks whether a tenant has an active lease on a unit (for operations/facility validation).
+     */
+    @Transactional(readOnly = true)
+    public boolean isTenantActiveInUnit(UUID tenantId, UUID unitId) {
+        return leaseRepository.existsByUnitIdAndTenantIdAndStatus(unitId, tenantId, LeaseStatus.ACTIVE);
+    }
+
+    /**
+     * Executes the interval overlap query: (NewStart <= ExistingEnd) AND (NewEnd >= ExistingStart)
+     * and evaluates multi-occupancy capacity against property-unit-service's UnitType capacity limit:
+     * - If Capacity == 1: any overlapping active lease blocks with 409 Conflict.
+     * - If Capacity > 1: allows concurrent leases if (overlapping + 1) <= Capacity;
+     *   rejects with 422 Unprocessable Entity if Capacity is breached.
+     */
+    public void validateUnitCapacityAndOverlap(UUID unitId, LocalDate startDate, LocalDate endDate, UUID excludeLeaseId) {
+        UnitCapacityResponse capacityResponse = propertyUnitServiceClient.getUnitCapacity(unitId);
+        int capacity = (capacityResponse != null && capacityResponse.capacityLimit() > 0)
+                ? capacityResponse.capacityLimit()
+                : 1;
+
+        long overlappingActiveCount = leaseRepository.countOverlappingActiveLeases(unitId, startDate, endDate, excludeLeaseId);
+
+        if (capacity == 1) {
+            if (overlappingActiveCount > 0) {
+                throw new LeaseConflictException(
+                        "Unit " + unitId + " already has an active lease overlapping the requested dates");
+            }
+        } else {
+            if (overlappingActiveCount + 1 > capacity) {
+                throw new CapacityLimitExceededException(
+                        "Unit " + unitId + " (capacity = " + capacity + ") cannot accept additional lease: already has "
+                                + overlappingActiveCount + " active overlapping leases");
+            }
         }
     }
 

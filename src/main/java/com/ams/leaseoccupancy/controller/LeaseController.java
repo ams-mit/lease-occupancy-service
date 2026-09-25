@@ -6,9 +6,11 @@ import com.ams.leaseoccupancy.dto.ApiResponse;
 import com.ams.leaseoccupancy.dto.LeaseCreateRequest;
 import com.ams.leaseoccupancy.dto.LeaseResponse;
 import com.ams.leaseoccupancy.dto.LeaseStatusUpdateRequest;
+import com.ams.leaseoccupancy.dto.OccupancyValidationResponse;
 import com.ams.leaseoccupancy.dto.PaginationMeta;
 import com.ams.leaseoccupancy.entity.Lease;
 import com.ams.leaseoccupancy.entity.LeaseStatus;
+import com.ams.leaseoccupancy.exception.ForbiddenException;
 import com.ams.leaseoccupancy.service.LeaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,7 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Manager-facing lease endpoints — every operation requires the MANAGER role (AGENTS.md §3A). */
+/** Manager-facing lease endpoints and public/shared operations (AGENTS.md §3A). */
 @RestController
 @RequestMapping("/api/v1/leases")
 @Tag(name = "Leases", description = "Contractual lease lifecycle")
@@ -38,6 +40,8 @@ public class LeaseController {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String ROLE_MANAGER = "MANAGER";
+    private static final String ROLE_RESIDENT = "RESIDENT";
+    private static final String OPERATIONS_SERVICE = "operations-service";
 
     private final LeaseService leaseService;
 
@@ -79,5 +83,23 @@ public class LeaseController {
         AuthContext.requireRole(ROLE_MANAGER);
         Lease lease = leaseService.updateStatus(leaseId, request);
         return ApiResponse.success("Lease status updated successfully", LeaseResponse.from(lease), RequestContext.getRequestId());
+    }
+
+    @GetMapping("/validate")
+    @Operation(summary = "Validate tenant occupancy on a unit", description =
+            "Controller alias for occupancy validation consumed by Group 4 and other authorized callers.")
+    public ApiResponse<OccupancyValidationResponse> validate(
+            @RequestParam UUID tenantId, @RequestParam UUID unitId) {
+
+        AuthContext.Principal principal = AuthContext.current();
+        boolean allowed = (principal.isService() && OPERATIONS_SERVICE.equals(principal.sub()))
+                || (principal.isUser() && (principal.roles().contains(ROLE_MANAGER) || principal.roles().contains(ROLE_RESIDENT)));
+        if (!allowed) {
+            throw new ForbiddenException("Caller not authorized to perform occupancy validation");
+        }
+
+        boolean active = leaseService.isTenantActiveInUnit(tenantId, unitId);
+        OccupancyValidationResponse data = new OccupancyValidationResponse(tenantId, unitId, active);
+        return ApiResponse.success("Occupancy validation completed", data, RequestContext.getRequestId());
     }
 }
