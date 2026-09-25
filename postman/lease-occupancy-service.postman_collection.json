@@ -1,0 +1,459 @@
+{
+  "info": {
+    "name": "lease-occupancy-service - Sprint 1",
+    "description": "Postman collection covering all Sprint 1 implemented endpoints in lease-occupancy-service.\n\nExcluded: Group B (Occupancies) and GET /leases/{id} variants which are not yet built.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "A. Contractual Leases",
+      "description": "Public, gateway-routed lease endpoints. Requires a User JWT with the MANAGER role.",
+      "item": [
+        {
+          "name": "Create a lease",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n  \"startDate\": \"2030-01-01\",\n  \"endDate\": \"2031-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leases",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leases"
+              ]
+            },
+            "description": "Requires User JWT with role MANAGER. Validates tenant and checks for schedule conflicts."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{base_url}}/leases",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "leases"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Lease created successfully\",\n  \"data\": {\n    \"id\": \"b9bc1f15-0d5b-43d9-9529-6887550fba20\",\n    \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n    \"status\": \"DRAFT\"\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            },
+            {
+              "name": "Conflict Error",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{base_url}}/leases",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "leases"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": false,\n  \"message\": \"Date overlap conflict\",\n  \"error\": {\n    \"code\": \"OCCUPANCY_CONFLICT\",\n    \"details\": null\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List leases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leases?status=ACTIVE&activeOn=2030-06-01&page=0&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leases"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "description": "Optional: DRAFT, ACTIVE, TERMINATED, COMPLETED"
+                },
+                {
+                  "key": "activeOn",
+                  "value": "2030-06-01",
+                  "description": "Optional: ISO Date"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Requires User JWT with role MANAGER. Filterable by status and an active-on date, paginated."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/leases?status=ACTIVE&activeOn=2030-06-01&page=0&size=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "leases"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Leases retrieved successfully\",\n  \"data\": [],\n  \"pagination\": {\n    \"page\": 0,\n    \"size\": 20,\n    \"totalElements\": 0,\n    \"totalPages\": 0\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update lease status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"reason\": \"Tenant moved in\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leases",
+                "b9bc1f15-0d5b-43d9-9529-6887550fba20",
+                "status"
+              ]
+            },
+            "description": "Requires User JWT with role MANAGER. Activates, terminates, or completes a lease."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "leases",
+                    "b9bc1f15-0d5b-43d9-9529-6887550fba20",
+                    "status"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Lease status updated successfully\",\n  \"data\": {\n    \"id\": \"b9bc1f15-0d5b-43d9-9529-6887550fba20\",\n    \"status\": \"ACTIVE\"\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            },
+            {
+              "name": "Validation Error",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "leases",
+                    "b9bc1f15-0d5b-43d9-9529-6887550fba20",
+                    "status"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": false,\n  \"message\": \"status is required\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"details\": null\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "C. Internal Service-to-Service",
+      "description": "Gateway-routed, service-to-service only endpoints. Requires a Service JWT (sub=allowed-caller).",
+      "item": [
+        {
+          "name": "Validate Occupancy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/occupancies/validate?tenantId=123e4567-e89b-12d3-a456-426614174001&unitId=123e4567-e89b-12d3-a456-426614174000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "occupancies",
+                "validate"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "123e4567-e89b-12d3-a456-426614174001"
+                },
+                {
+                  "key": "unitId",
+                  "value": "123e4567-e89b-12d3-a456-426614174000"
+                }
+              ]
+            },
+            "description": "Requires Service JWT with sub=operations-service. Check whether a tenant actively resides in a unit."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/internal/occupancies/validate?tenantId=123e4567-e89b-12d3-a456-426614174001&unitId=123e4567-e89b-12d3-a456-426614174000",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "occupancies",
+                    "validate"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Occupancy validation completed\",\n  \"data\": {\n    \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n    \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"active\": true\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Active Billing Targets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internal/occupancies/active-billing",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internal",
+                "occupancies",
+                "active-billing"
+              ]
+            },
+            "description": "Requires Service JWT with sub=billing-payment-service. List active units and their billing targets."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/internal/occupancies/active-billing",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "occupancies",
+                    "active-billing"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Active billing targets retrieved successfully\",\n  \"data\": [],\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "D. System Operations",
+      "description": "Unauthenticated infra/tooling endpoints.",
+      "item": [
+        {
+          "name": "Actuator Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8084/actuator/health",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8084",
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "App and DB health (unauthenticated)."
+          },
+          "response": []
+        },
+        {
+          "name": "Actuator Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8084/actuator/info",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8084",
+              "path": [
+                "actuator",
+                "info"
+              ]
+            },
+            "description": "Deployment metadata (unauthenticated)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8084/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
