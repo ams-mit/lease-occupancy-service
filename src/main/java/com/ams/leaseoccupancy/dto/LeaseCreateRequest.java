@@ -20,5 +20,11 @@ public record LeaseCreateRequest(
 
         @NotNull(message = "endDate is required")
         @Future(message = "endDate must be in the future")
-        LocalDate endDate) {
+        LocalDate endDate,
+
+        String customNotes) {
+
+    public LeaseCreateRequest(UUID unitId, UUID tenantId, LocalDate startDate, LocalDate endDate) {
+        this(unitId, tenantId, startDate, endDate, null);
+    }
 }

@@ -13,6 +13,7 @@ public record LeaseResponse(
         LocalDate startDate,
         LocalDate endDate,
         LeaseStatus status,
+        String customNotes,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -24,6 +25,7 @@ public record LeaseResponse(
                 lease.getStartDate(),
                 lease.getEndDate(),
                 lease.getStatus(),
+                lease.getCustomNotes(),
                 lease.getCreatedAt(),
                 lease.getUpdatedAt());
     }

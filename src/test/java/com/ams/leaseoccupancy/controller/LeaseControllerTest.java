@@ -49,7 +49,7 @@ class LeaseControllerTest {
 
     @Test
     void createLease_returns201WithEnvelope() throws Exception {
-        Lease saved = sampleLease(LeaseStatus.PENDING);
+        Lease saved = sampleLease(LeaseStatus.DRAFT);
         when(leaseService.createLease(any())).thenReturn(saved);
 
         String body = """
@@ -59,7 +59,7 @@ class LeaseControllerTest {
         mockMvc.perform(asManager(post("/api/v1/leases")).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.requestId").exists());
     }
 

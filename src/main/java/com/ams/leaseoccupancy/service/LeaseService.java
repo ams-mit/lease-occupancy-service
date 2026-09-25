@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Enforces the lease business rules documented in AGENTS.md §3: date-overlap checks,
- * activation prerequisites, and valid lease-status transitions.
+ * Enforces the lease business rules: date validation, tenant validation,
+ * date-overlap checks, activation prerequisites, and valid lease-status transitions.
  */
 @Service
 public class LeaseService {
@@ -54,7 +54,8 @@ public class LeaseService {
         lease.setTenantId(request.tenantId());
         lease.setStartDate(request.startDate());
         lease.setEndDate(request.endDate());
-        lease.setStatus(LeaseStatus.PENDING);
+        lease.setStatus(LeaseStatus.DRAFT);
+        lease.setCustomNotes(request.customNotes());
         return leaseRepository.save(lease);
     }
 
@@ -93,9 +94,10 @@ public class LeaseService {
 
     private void assertValidTransition(LeaseStatus current, LeaseStatus target) {
         boolean valid = switch (current) {
-            case PENDING -> target == LeaseStatus.ACTIVE || target == LeaseStatus.TERMINATED;
-            case ACTIVE -> target == LeaseStatus.TERMINATED || target == LeaseStatus.COMPLETED;
-            case TERMINATED, COMPLETED -> false;
+            case DRAFT -> target == LeaseStatus.PENDING_ACTIVATION || target == LeaseStatus.ACTIVE || target == LeaseStatus.TERMINATED;
+            case PENDING_ACTIVATION -> target == LeaseStatus.ACTIVE || target == LeaseStatus.TERMINATED;
+            case ACTIVE -> target == LeaseStatus.TERMINATED || target == LeaseStatus.EXPIRED;
+            case TERMINATED, EXPIRED -> false;
         };
 
         if (!valid) {

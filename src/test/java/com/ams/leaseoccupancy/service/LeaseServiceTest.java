@@ -55,7 +55,7 @@ class LeaseServiceTest {
     }
 
     @Test
-    void createLease_savesAsPending_whenTenantValidAndNoConflict() {
+    void createLease_savesAsDraft_whenTenantValidAndNoConflict() {
         LeaseCreateRequest request = new LeaseCreateRequest(unitId, tenantId, startDate, endDate);
         when(identityServiceClient.validateUser(tenantId))
                 .thenReturn(new IdentityUserValidation(tenantId, true, true));
@@ -65,7 +65,7 @@ class LeaseServiceTest {
 
         Lease result = leaseService.createLease(request);
 
-        assertThat(result.getStatus()).isEqualTo(LeaseStatus.PENDING);
+        assertThat(result.getStatus()).isEqualTo(LeaseStatus.DRAFT);
         assertThat(result.getUnitId()).isEqualTo(unitId);
         assertThat(result.getTenantId()).isEqualTo(tenantId);
     }
@@ -120,7 +120,7 @@ class LeaseServiceTest {
 
     @Test
     void updateStatus_activates_whenTransitionValidAndNoConflict() {
-        Lease lease = existingLeaseWithStatus(LeaseStatus.PENDING);
+        Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
         when(leaseRepository.existsOverlappingActiveLease(lease.getUnitId(), lease.getStartDate(), lease.getEndDate(), lease.getId()))
                 .thenReturn(false);
