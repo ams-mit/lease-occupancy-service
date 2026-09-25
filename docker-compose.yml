@@ -1,20 +1,4 @@
 services:
-  property_db:
-    image: postgres:16-alpine
-    ports:
-      - "3307:5432"
-    environment:
-      POSTGRES_DB: ${PROPERTY_DB_NAME:-property_db}
-      POSTGRES_USER: ${PROPERTY_DB_USERNAME:-property_service}
-      POSTGRES_PASSWORD: ${PROPERTY_DB_PASSWORD:-property_password}
-    volumes:
-      - property_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   lease_db:
     image: postgres:16-alpine
     ports:
@@ -32,5 +16,4 @@ services:
       retries: 5
 
 volumes:
-  property_db_data:
   lease_db_data:
