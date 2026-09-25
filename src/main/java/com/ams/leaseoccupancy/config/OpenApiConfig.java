@@ -43,7 +43,7 @@ public class OpenApiConfig {
         return GroupedOpenApi.builder()
                 .group("public")
                 .displayName("Public API (Gateway-routed, User JWT required)")
-                .pathsToMatch("/api/v1/leases/**", "/api/v1/occupancies/**")
+                .pathsToMatch("/api/v1/leases/**", "/api/v1/occupancies/**", "/api/v1/units/**")
                 .build();
     }
 

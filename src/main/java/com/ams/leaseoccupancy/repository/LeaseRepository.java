@@ -94,4 +94,7 @@ public interface LeaseRepository extends JpaRepository<Lease, UUID>, JpaSpecific
 
     /** Backs GET /api/v1/internal/occupancies/active-billing — every currently billable unit/tenant pair. */
     List<Lease> findByStatus(LeaseStatus status);
+
+    /** Backs GET /api/v1/units/{unitId}/active-occupancy — retrieves active leases for a target unit. */
+    List<Lease> findByUnitIdAndStatus(UUID unitId, LeaseStatus status);
 }

@@ -4,6 +4,8 @@ import com.ams.leaseoccupancy.client.IdentityServiceClient;
 import com.ams.leaseoccupancy.client.IdentityUserValidation;
 import com.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import com.ams.leaseoccupancy.client.UnitCapacityResponse;
+import com.ams.leaseoccupancy.client.UnitDetailsResponse;
+import com.ams.leaseoccupancy.dto.ActiveOccupancyResponse;
 import com.ams.leaseoccupancy.dto.LeaseCreateRequest;
 import com.ams.leaseoccupancy.dto.LeaseStatusUpdateRequest;
 import com.ams.leaseoccupancy.entity.Lease;
@@ -14,9 +16,12 @@ import com.ams.leaseoccupancy.exception.InvalidLeaseStatusTransitionException;
 import com.ams.leaseoccupancy.exception.InvalidTenantException;
 import com.ams.leaseoccupancy.exception.LeaseConflictException;
 import com.ams.leaseoccupancy.exception.LeaseNotFoundException;
+import com.ams.leaseoccupancy.exception.OccupancyNotFoundException;
+import com.ams.leaseoccupancy.exception.UnitUnderMaintenanceException;
 import com.ams.leaseoccupancy.repository.LeaseRepository;
 import com.ams.leaseoccupancy.repository.LeaseSpecifications;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Enforces conflict-validation rules, interval overlap query engine,
- * multi-occupancy capacity checks, and concurrency control during activation.
+ * multi-occupancy capacity checks, unit status transitions, and concurrency control.
  */
 @Service
 public class LeaseService {
@@ -88,10 +93,25 @@ public class LeaseService {
 
         // Activation prerequisites with concurrency control:
         // 1. Acquire pessimistic lock on the unit record to serialize concurrent activations
-        // 2. Execute interval overlap rule & multi-occupancy capacity check against property-unit-service
+        // 2. Verify target unit is not under maintenance
+        // 3. Execute interval overlap rule & multi-occupancy capacity check against property-unit-service
+        // 4. Auto-trigger unit status transition to OCCUPIED in property-unit-service
         if (target == LeaseStatus.ACTIVE) {
             unitLockService.acquireUnitLock(lease.getUnitId());
+
+            UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(lease.getUnitId());
+            if (unitDetails != null && unitDetails.isUnderMaintenance()) {
+                throw new UnitUnderMaintenanceException(lease.getUnitId());
+            }
+
             validateUnitCapacityAndOverlap(lease.getUnitId(), lease.getStartDate(), lease.getEndDate(), lease.getId());
+
+            lease.setStatus(target);
+            Lease saved = leaseRepository.save(lease);
+
+            // Auto-trigger REST hook / sync with property-unit-service (P1G2-07)
+            propertyUnitServiceClient.updateUnitStatus(lease.getUnitId(), "OCCUPIED");
+            return saved;
         }
 
         lease.setStatus(target);
@@ -100,10 +120,30 @@ public class LeaseService {
 
     /**
      * Checks whether a tenant has an active lease on a unit (for operations/facility validation).
+     * Validates target unit existence with property-unit-service.
      */
     @Transactional(readOnly = true)
     public boolean isTenantActiveInUnit(UUID tenantId, UUID unitId) {
+        propertyUnitServiceClient.getUnitDetails(unitId);
         return leaseRepository.existsByUnitIdAndTenantIdAndStatus(unitId, tenantId, LeaseStatus.ACTIVE);
+    }
+
+    /**
+     * Retrieves the current active occupancy record for a unit (consumed by billing-service).
+     * Validates unit existence and returns active occupant ID, owner ID, and lease terms.
+     */
+    @Transactional(readOnly = true)
+    public ActiveOccupancyResponse getActiveOccupancy(UUID unitId) {
+        UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(unitId);
+        UUID ownerId = unitDetails != null ? unitDetails.ownerId() : null;
+
+        List<Lease> activeLeases = leaseRepository.findByUnitIdAndStatus(unitId, LeaseStatus.ACTIVE);
+        if (activeLeases.isEmpty()) {
+            throw new OccupancyNotFoundException(unitId);
+        }
+
+        Lease activeLease = activeLeases.get(0);
+        return ActiveOccupancyResponse.from(activeLease, ownerId);
     }
 
     /**
