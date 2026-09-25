@@ -1,14 +1,13 @@
 # lease-occupancy-service Postman Collection
 
-This directory contains the Postman collection for Sprint 1 of the `lease-occupancy-service`.
+This directory contains the Postman collection for the `lease-occupancy-service`.
 
 ## Included Endpoints
-The collection covers all implemented endpoints as of Sprint 1:
-* **A. Contractual Leases:** `POST /leases`, `GET /leases`, `PATCH /leases/{leaseId}/status`
+The collection covers all implemented endpoints across Sprint 1 and Sprint 2:
+* **A. Contractual Leases:** `POST /leases`, `GET /leases`, `PATCH /leases/{leaseId}/status`, `GET /leases/validate` (Operations validation)
+* **B. Unit Occupancy:** `GET /units/{unitId}/active-occupancy` (Billing Service active occupancy lookup)
 * **C. Internal Service-to-Service:** `GET /internal/occupancies/active-billing`, `GET /internal/occupancies/validate`
 * **D. System Operations:** `/actuator/health`, `/actuator/info`
-
-**Note:** Group B (Physical Occupancies) and other unimplemented endpoints like `GET /leases/{leaseId}` are intentionally excluded.
 
 ## Setup Instructions
 

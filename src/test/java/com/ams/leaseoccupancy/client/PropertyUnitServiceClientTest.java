@@ -2,14 +2,17 @@ package com.ams.leaseoccupancy.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withResourceNotFound;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.ams.leaseoccupancy.config.JwtService;
 import com.ams.leaseoccupancy.exception.DependencyUnavailableException;
+import com.ams.leaseoccupancy.exception.UnitNotFoundException;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,5 +77,60 @@ class PropertyUnitServiceClientTest {
 
         assertThatThrownBy(() -> propertyUnitServiceClient.getUnitCapacity(unitId))
                 .isInstanceOf(DependencyUnavailableException.class);
+    }
+
+    @Test
+    void getUnitDetails_returnsDetails_whenResponseIs200() {
+        UUID unitId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Mockito.when(jwtService.mintServiceToken()).thenReturn("mock-service-token");
+
+        String json = """
+                {"success":true,"data":{"unitId":"%s","status":"AVAILABLE","capacityLimit":2,"ownerId":"%s"}}
+                """.formatted(unitId, ownerId);
+
+        mockServer.expect(requestTo("http://gateway.test/api/v1/internal/units/" + unitId))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer mock-service-token"))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        UnitDetailsResponse response = propertyUnitServiceClient.getUnitDetails(unitId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.unitId()).isEqualTo(unitId);
+        assertThat(response.status()).isEqualTo("AVAILABLE");
+        assertThat(response.capacityLimit()).isEqualTo(2);
+        assertThat(response.ownerId()).isEqualTo(ownerId);
+        assertThat(response.isUnderMaintenance()).isFalse();
+        mockServer.verify();
+    }
+
+    @Test
+    void getUnitDetails_throwsUnitNotFound_when404() {
+        UUID unitId = UUID.randomUUID();
+        Mockito.when(jwtService.mintServiceToken()).thenReturn("mock-service-token");
+
+        mockServer.expect(requestTo("http://gateway.test/api/v1/internal/units/" + unitId))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withResourceNotFound());
+
+        assertThatThrownBy(() -> propertyUnitServiceClient.getUnitDetails(unitId))
+                .isInstanceOf(UnitNotFoundException.class);
+    }
+
+    @Test
+    void updateUnitStatus_sendsPatchRequest() {
+        UUID unitId = UUID.randomUUID();
+        Mockito.when(jwtService.mintServiceToken()).thenReturn("mock-service-token");
+
+        mockServer.expect(requestTo("http://gateway.test/api/v1/internal/units/" + unitId + "/status"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer mock-service-token"))
+                .andExpect(content().json("{\"status\":\"OCCUPIED\"}"))
+                .andRespond(withSuccess());
+
+        propertyUnitServiceClient.updateUnitStatus(unitId, "OCCUPIED");
+
+        mockServer.verify();
     }
 }
