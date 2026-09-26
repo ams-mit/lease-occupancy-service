@@ -1,9 +1,6 @@
 package com.ams.leaseoccupancy.service;
 
-import com.ams.leaseoccupancy.entity.UnitLock;
 import com.ams.leaseoccupancy.repository.UnitLockRepository;
-import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -27,15 +24,8 @@ public class UnitLockService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void acquireUnitLock(UUID unitId) {
-        Optional<UnitLock> lockOpt = unitLockRepository.findByUnitIdForUpdate(unitId);
-        if (lockOpt.isEmpty()) {
-            UnitLock lock = new UnitLock(unitId, Instant.now());
-            unitLockRepository.saveAndFlush(lock);
-            unitLockRepository.findByUnitIdForUpdate(unitId);
-        } else {
-            UnitLock lock = lockOpt.get();
-            lock.setLockedAt(Instant.now());
-            unitLockRepository.save(lock);
-        }
+        unitLockRepository.ensureLockRow(unitId);
+        unitLockRepository.findByUnitIdForUpdate(unitId)
+                .orElseThrow(() -> new IllegalStateException("Unable to lock unit " + unitId));
     }
 }

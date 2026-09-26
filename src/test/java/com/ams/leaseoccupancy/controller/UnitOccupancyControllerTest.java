@@ -92,4 +92,20 @@ class UnitOccupancyControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
     }
+
+    @Test
+    void getActiveOccupancy_rejectsUnrelatedResident() throws Exception {
+        mockMvc.perform(get("/api/v1/units/{unitId}/active-occupancy", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION,
+                                "Bearer " + TestJwtTokens.userToken("resident-1", "RESIDENT")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getActiveOccupancy_rejectsUnapprovedService() throws Exception {
+        mockMvc.perform(get("/api/v1/units/{unitId}/active-occupancy", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION,
+                                "Bearer " + TestJwtTokens.serviceToken("community-service")))
+                .andExpect(status().isForbidden());
+    }
 }

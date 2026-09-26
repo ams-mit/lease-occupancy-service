@@ -88,8 +88,8 @@ public class PropertyUnitServiceClientImpl implements PropertyUnitServiceClient 
                     .toBodilessEntity();
             log.info("Successfully updated unit {} status to {} in property-unit-service", unitId, status);
         } catch (RestClientException ex) {
-            log.warn("Failed to auto-transition unit {} status to {} in property-unit-service: {}", unitId, status, ex.getMessage());
-            // Do not break the lease activation transaction if property service status hook encounters temporary network failure
+            log.warn("Failed to transition unit {} status to {} in property-unit-service: {}", unitId, status, ex.getMessage());
+            throw new DependencyUnavailableException(SERVICE_NAME, ex);
         }
     }
 

@@ -33,6 +33,13 @@ public class ServiceClientsConfig {
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
+                .requestInterceptor((request, body, execution) -> {
+                    String requestId = RequestContext.getRequestId();
+                    if (!"unknown".equals(requestId)) {
+                        request.getHeaders().set(RequestIdFilter.REQUEST_ID_HEADER, requestId);
+                    }
+                    return execution.execute(request, body);
+                })
                 .build();
     }
 }

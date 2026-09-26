@@ -4,8 +4,8 @@ This directory contains the Postman collection for the `lease-occupancy-service`
 
 ## Included Endpoints
 The collection covers all implemented endpoints across Sprint 1 and Sprint 2:
-* **A. Contractual Leases:** `POST /leases`, `GET /leases`, `PATCH /leases/{leaseId}/status`, `GET /leases/validate` (Operations validation)
-* **B. Unit Occupancy:** `GET /units/{unitId}/active-occupancy` (Billing Service active occupancy lookup)
+* **A. Contractual Leases:** `POST /leases`, `GET /leases`, `GET /leases/{leaseId}`, `GET /leases/{leaseId}/history`, `GET /leases/units/{unitId}`, `PATCH /leases/{leaseId}/status`, `GET /leases/validate`
+* **B. Unit Occupancy:** `POST /occupancies`, `GET /occupancies/units/{unitId}`, `GET /occupancies/residents/{residentId}`, `PATCH /occupancies/{occupancyId}/status`, `GET /units/{unitId}/active-occupancy`
 * **C. Internal Service-to-Service:** `GET /internal/occupancies/active-billing`, `GET /internal/occupancies/validate`
 * **D. System Operations:** `/actuator/health`, `/actuator/info`
 
@@ -22,7 +22,9 @@ Every endpoint (except System Operations) requires a Gateway-issued JWT sent in 
 
 ### 1. Public Endpoints (Contractual Leases)
 * Require a **User JWT** (`type=user`).
-* Must contain the role `MANAGER` in its claims.
+* Lease and occupancy writes require `MANAGER`.
+* Lease detail and status history allow a resident party; unit lease history allows its owner.
+* Resident occupancy history is restricted to the resident or a manager.
 
 ### 2. Internal Endpoints (Service-to-Service)
 * Require a **Service JWT** (`type=service`).

@@ -10,6 +10,7 @@ import com.ams.leaseoccupancy.dto.OccupancyValidationResponse;
 import com.ams.leaseoccupancy.dto.PaginationMeta;
 import com.ams.leaseoccupancy.entity.Lease;
 import com.ams.leaseoccupancy.entity.LeaseStatus;
+import com.ams.leaseoccupancy.entity.LeaseStatusHistory;
 import com.ams.leaseoccupancy.exception.ForbiddenException;
 import com.ams.leaseoccupancy.service.LeaseService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,7 +41,6 @@ public class LeaseController {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String ROLE_MANAGER = "MANAGER";
-    private static final String ROLE_RESIDENT = "RESIDENT";
     private static final String OPERATIONS_SERVICE = "operations-service";
 
     private final LeaseService leaseService;
@@ -85,6 +85,52 @@ public class LeaseController {
         return ApiResponse.success("Lease status updated successfully", LeaseResponse.from(lease), RequestContext.getRequestId());
     }
 
+    @GetMapping("/{leaseId}")
+    @Operation(summary = "Get a lease by ID")
+    public ApiResponse<LeaseResponse> getLease(@PathVariable UUID leaseId) {
+        AuthContext.Principal caller = AuthContext.current();
+        Lease lease = leaseService.getLease(leaseId);
+        boolean manager = caller.isUser() && caller.roles().contains(ROLE_MANAGER);
+        boolean party = caller.isUser() && (lease.getTenantId().toString().equals(caller.sub())
+                || lease.getOccupants().stream().anyMatch(o -> o.getResidentId().toString().equals(caller.sub())));
+        if (!manager && !party) {
+            throw new ForbiddenException("Caller is not a party to this lease");
+        }
+        return ApiResponse.success("Lease retrieved", LeaseResponse.from(lease), RequestContext.getRequestId());
+    }
+
+    @GetMapping("/{leaseId}/history")
+    @Operation(summary = "Get lease status history")
+    public ApiResponse<List<LeaseStatusHistory>> statusHistory(@PathVariable UUID leaseId) {
+        AuthContext.Principal caller = AuthContext.current();
+        Lease lease = leaseService.getLease(leaseId);
+        boolean manager = caller.isUser() && caller.roles().contains(ROLE_MANAGER);
+        boolean party = caller.isUser() && (lease.getTenantId().toString().equals(caller.sub())
+                || lease.getOccupants().stream().anyMatch(o -> o.getResidentId().toString().equals(caller.sub())));
+        if (!manager && !party) {
+            throw new ForbiddenException("Caller is not a party to this lease");
+        }
+        return ApiResponse.success("Lease status history retrieved", leaseService.statusHistory(leaseId),
+                RequestContext.getRequestId());
+    }
+
+    @GetMapping("/units/{unitId}")
+    @Operation(summary = "Get lease history for a unit")
+    public ApiResponse<List<LeaseResponse>> historyForUnit(@PathVariable UUID unitId) {
+        AuthContext.Principal caller = AuthContext.current();
+        boolean manager = caller.isUser() && caller.roles().contains(ROLE_MANAGER);
+        if (!manager) {
+            UUID ownerId = leaseService.ownerOfUnit(unitId);
+            if (!caller.isUser() || !caller.roles().contains("OWNER") || ownerId == null
+                    || !ownerId.toString().equals(caller.sub())) {
+                throw new ForbiddenException("Only a manager or unit owner can view lease history");
+            }
+        }
+        return ApiResponse.success("Lease history retrieved",
+                leaseService.historyForUnit(unitId).stream().map(LeaseResponse::from).toList(),
+                RequestContext.getRequestId());
+    }
+
     @GetMapping("/validate")
     @Operation(summary = "Validate tenant occupancy on a unit", description =
             "Controller alias for occupancy validation consumed by Group 4 and other authorized callers.")
@@ -93,7 +139,7 @@ public class LeaseController {
 
         AuthContext.Principal principal = AuthContext.current();
         boolean allowed = (principal.isService() && OPERATIONS_SERVICE.equals(principal.sub()))
-                || (principal.isUser() && (principal.roles().contains(ROLE_MANAGER) || principal.roles().contains(ROLE_RESIDENT)));
+                || (principal.isUser() && principal.roles().contains(ROLE_MANAGER));
         if (!allowed) {
             throw new ForbiddenException("Caller not authorized to perform occupancy validation");
         }

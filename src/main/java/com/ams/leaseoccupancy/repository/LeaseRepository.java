@@ -6,6 +6,7 @@ import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -14,6 +15,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface LeaseRepository extends JpaRepository<Lease, UUID>, JpaSpecificationExecutor<Lease> {
+
+    @Query("SELECT l FROM Lease l LEFT JOIN FETCH l.occupants WHERE l.id = :leaseId")
+    Optional<Lease> findWithOccupants(@Param("leaseId") UUID leaseId);
 
     /**
      * Standard-unit 1-to-1 occupancy rule: true if the unit already has an ACTIVE
@@ -97,4 +101,12 @@ public interface LeaseRepository extends JpaRepository<Lease, UUID>, JpaSpecific
 
     /** Backs GET /api/v1/units/{unitId}/active-occupancy — retrieves active leases for a target unit. */
     List<Lease> findByUnitIdAndStatus(UUID unitId, LeaseStatus status);
+
+    List<Lease> findByUnitIdOrderByStartDateDesc(UUID unitId);
+
+    List<Lease> findByUnitIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            UUID unitId, LeaseStatus status, LocalDate onOrBefore, LocalDate onOrAfter);
+
+    boolean existsByUnitIdAndTenantIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            UUID unitId, UUID tenantId, LeaseStatus status, LocalDate onOrBefore, LocalDate onOrAfter);
 }
