@@ -1,6 +1,5 @@
 package com.ams.leaseoccupancy.service;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,25 +24,26 @@ class UnitLockServiceTest {
     private UnitLockService unitLockService;
 
     @Test
-    void acquireUnitLock_createsNewLock_whenNoneExists() {
+    void acquireUnitLock_ensuresRowThenLocksIt() {
         UUID unitId = UUID.randomUUID();
         when(unitLockRepository.findByUnitIdForUpdate(unitId))
-                .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(new UnitLock(unitId, Instant.now())));
 
         unitLockService.acquireUnitLock(unitId);
 
-        verify(unitLockRepository).saveAndFlush(any(UnitLock.class));
+        verify(unitLockRepository).ensureLockRow(unitId);
+        verify(unitLockRepository).findByUnitIdForUpdate(unitId);
     }
 
     @Test
-    void acquireUnitLock_updatesExistingLock_whenExists() {
+    void acquireUnitLock_reusesExistingLock() {
         UUID unitId = UUID.randomUUID();
         UnitLock existing = new UnitLock(unitId, Instant.now().minusSeconds(10));
         when(unitLockRepository.findByUnitIdForUpdate(unitId)).thenReturn(Optional.of(existing));
 
         unitLockService.acquireUnitLock(unitId);
 
-        verify(unitLockRepository).save(existing);
+        verify(unitLockRepository).ensureLockRow(unitId);
+        verify(unitLockRepository).findByUnitIdForUpdate(unitId);
     }
 }

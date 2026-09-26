@@ -5,11 +5,15 @@ import com.ams.leaseoccupancy.client.IdentityUserValidation;
 import com.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import com.ams.leaseoccupancy.client.UnitCapacityResponse;
 import com.ams.leaseoccupancy.client.UnitDetailsResponse;
+import com.ams.leaseoccupancy.config.AuthContext;
 import com.ams.leaseoccupancy.dto.ActiveOccupancyResponse;
 import com.ams.leaseoccupancy.dto.LeaseCreateRequest;
 import com.ams.leaseoccupancy.dto.LeaseStatusUpdateRequest;
 import com.ams.leaseoccupancy.entity.Lease;
 import com.ams.leaseoccupancy.entity.LeaseStatus;
+import com.ams.leaseoccupancy.entity.LeaseStatusHistory;
+import com.ams.leaseoccupancy.entity.OccupancyStatus;
+import com.ams.leaseoccupancy.entity.Occupancy;
 import com.ams.leaseoccupancy.exception.CapacityLimitExceededException;
 import com.ams.leaseoccupancy.exception.InvalidLeaseDatesException;
 import com.ams.leaseoccupancy.exception.InvalidLeaseStatusTransitionException;
@@ -20,6 +24,8 @@ import com.ams.leaseoccupancy.exception.OccupancyNotFoundException;
 import com.ams.leaseoccupancy.exception.UnitUnderMaintenanceException;
 import com.ams.leaseoccupancy.repository.LeaseRepository;
 import com.ams.leaseoccupancy.repository.LeaseSpecifications;
+import com.ams.leaseoccupancy.repository.LeaseStatusHistoryRepository;
+import com.ams.leaseoccupancy.repository.OccupancyRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -40,16 +46,22 @@ public class LeaseService {
     private final IdentityServiceClient identityServiceClient;
     private final PropertyUnitServiceClient propertyUnitServiceClient;
     private final UnitLockService unitLockService;
+    private final OccupancyRepository occupancyRepository;
+    private final LeaseStatusHistoryRepository statusHistory;
 
     public LeaseService(
             LeaseRepository leaseRepository,
             IdentityServiceClient identityServiceClient,
             PropertyUnitServiceClient propertyUnitServiceClient,
-            UnitLockService unitLockService) {
+            UnitLockService unitLockService,
+            OccupancyRepository occupancyRepository,
+            LeaseStatusHistoryRepository statusHistory) {
         this.leaseRepository = leaseRepository;
         this.identityServiceClient = identityServiceClient;
         this.propertyUnitServiceClient = propertyUnitServiceClient;
         this.unitLockService = unitLockService;
+        this.occupancyRepository = occupancyRepository;
+        this.statusHistory = statusHistory;
     }
 
     @Transactional
@@ -72,7 +84,9 @@ public class LeaseService {
         lease.setEndDate(request.endDate());
         lease.setStatus(LeaseStatus.DRAFT);
         lease.setCustomNotes(request.customNotes());
-        return leaseRepository.save(lease);
+        Lease saved = leaseRepository.save(lease);
+        recordStatus(saved, null, LeaseStatus.DRAFT, "Lease created");
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -83,13 +97,35 @@ public class LeaseService {
         return leaseRepository.findAll(spec, pageable);
     }
 
+    @Transactional(readOnly = true)
+    public Lease getLease(UUID leaseId) {
+        return leaseRepository.findWithOccupants(leaseId)
+                .orElseThrow(() -> new LeaseNotFoundException(leaseId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LeaseStatusHistory> statusHistory(UUID leaseId) {
+        return statusHistory.findByLeaseIdOrderByChangedAtAsc(leaseId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Lease> historyForUnit(UUID unitId) {
+        propertyUnitServiceClient.getUnitDetails(unitId);
+        return leaseRepository.findByUnitIdOrderByStartDateDesc(unitId);
+    }
+
+    public UUID ownerOfUnit(UUID unitId) {
+        return propertyUnitServiceClient.getUnitDetails(unitId).ownerId();
+    }
+
     @Transactional
     public Lease updateStatus(UUID leaseId, LeaseStatusUpdateRequest request) {
         Lease lease = leaseRepository.findById(leaseId)
                 .orElseThrow(() -> new LeaseNotFoundException(leaseId));
 
         LeaseStatus target = request.status();
-        assertValidTransition(lease.getStatus(), target);
+        LeaseStatus previous = lease.getStatus();
+        assertValidTransition(previous, target);
 
         // Activation prerequisites with concurrency control:
         // 1. Acquire pessimistic lock on the unit record to serialize concurrent activations
@@ -98,6 +134,16 @@ public class LeaseService {
         // 4. Auto-trigger unit status transition to OCCUPIED in property-unit-service
         if (target == LeaseStatus.ACTIVE) {
             unitLockService.acquireUnitLock(lease.getUnitId());
+
+            LocalDate today = LocalDate.now();
+            if (today.isBefore(lease.getStartDate()) || today.isAfter(lease.getEndDate())) {
+                throw new InvalidLeaseDatesException("A lease can only be activated within its agreed period");
+            }
+
+            IdentityUserValidation tenant = identityServiceClient.validateUser(lease.getTenantId());
+            if (!tenant.isValidTenant()) {
+                throw new InvalidTenantException(lease.getTenantId());
+            }
 
             UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(lease.getUnitId());
             if (unitDetails != null && unitDetails.isUnderMaintenance()) {
@@ -108,6 +154,7 @@ public class LeaseService {
 
             lease.setStatus(target);
             Lease saved = leaseRepository.save(lease);
+            recordStatus(saved, previous, target, request.reason());
 
             // Auto-trigger REST hook / sync with property-unit-service (P1G2-07)
             propertyUnitServiceClient.updateUnitStatus(lease.getUnitId(), "OCCUPIED");
@@ -115,17 +162,49 @@ public class LeaseService {
         }
 
         lease.setStatus(target);
-        return leaseRepository.save(lease);
+        Lease saved = leaseRepository.save(lease);
+        recordStatus(saved, previous, target, request.reason());
+        if (previous == LeaseStatus.ACTIVE
+                && (target == LeaseStatus.TERMINATED || target == LeaseStatus.EXPIRED)) {
+            for (Occupancy occupancy : occupancyRepository.findByLeaseIdAndStatus(
+                    leaseId, OccupancyStatus.ACTIVE)) {
+                occupancy.setStatus(OccupancyStatus.INACTIVE);
+                occupancy.setMoveOutDate(LocalDate.now());
+                occupancyRepository.save(occupancy);
+            }
+            LocalDate today = LocalDate.now();
+            boolean anotherActiveLease = leaseRepository
+                    .findByUnitIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                            lease.getUnitId(), LeaseStatus.ACTIVE, today, today)
+                    .stream().anyMatch(other -> !other.getId().equals(leaseId));
+            if (!anotherActiveLease) {
+                UnitDetailsResponse unit = propertyUnitServiceClient.getUnitDetails(lease.getUnitId());
+                if ("OCCUPIED".equals(unit.status())) {
+                    propertyUnitServiceClient.updateUnitStatus(lease.getUnitId(), "AVAILABLE");
+                }
+            }
+        }
+        return saved;
+    }
+
+    private void recordStatus(Lease lease, LeaseStatus from, LeaseStatus to, String reason) {
+        LeaseStatusHistory entry = new LeaseStatusHistory();
+        entry.setLeaseId(lease.getId());
+        entry.setFromStatus(from);
+        entry.setToStatus(to);
+        entry.setChangedBy(AuthContext.subjectOrSystem());
+        entry.setReason(reason);
+        statusHistory.save(entry);
     }
 
     /**
-     * Checks whether a tenant has an active lease on a unit (for operations/facility validation).
+     * Checks whether a tenant has a physical active occupancy on a unit.
      * Validates target unit existence with property-unit-service.
      */
     @Transactional(readOnly = true)
     public boolean isTenantActiveInUnit(UUID tenantId, UUID unitId) {
         propertyUnitServiceClient.getUnitDetails(unitId);
-        return leaseRepository.existsByUnitIdAndTenantIdAndStatus(unitId, tenantId, LeaseStatus.ACTIVE);
+        return occupancyRepository.existsCurrentlyEligibleResident(unitId, tenantId, LocalDate.now());
     }
 
     /**
@@ -137,7 +216,10 @@ public class LeaseService {
         UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(unitId);
         UUID ownerId = unitDetails != null ? unitDetails.ownerId() : null;
 
-        List<Lease> activeLeases = leaseRepository.findByUnitIdAndStatus(unitId, LeaseStatus.ACTIVE);
+        LocalDate today = LocalDate.now();
+        List<Lease> activeLeases = leaseRepository
+                .findByUnitIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        unitId, LeaseStatus.ACTIVE, today, today);
         if (activeLeases.isEmpty()) {
             throw new OccupancyNotFoundException(unitId);
         }
@@ -155,9 +237,10 @@ public class LeaseService {
      */
     public void validateUnitCapacityAndOverlap(UUID unitId, LocalDate startDate, LocalDate endDate, UUID excludeLeaseId) {
         UnitCapacityResponse capacityResponse = propertyUnitServiceClient.getUnitCapacity(unitId);
-        int capacity = (capacityResponse != null && capacityResponse.capacityLimit() > 0)
-                ? capacityResponse.capacityLimit()
-                : 1;
+        if (capacityResponse == null || capacityResponse.capacityLimit() <= 0) {
+            throw new CapacityLimitExceededException("Unit " + unitId + " has no leasable capacity");
+        }
+        int capacity = capacityResponse.capacityLimit();
 
         long overlappingActiveCount = leaseRepository.countOverlappingActiveLeases(unitId, startDate, endDate, excludeLeaseId);
 

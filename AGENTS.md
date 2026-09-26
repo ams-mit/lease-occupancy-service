@@ -59,7 +59,7 @@ Group 2 sibling relationship: `property-unit-service` owns the physical inventor
 | Service name | `lease-occupancy-service` |
 | Local base URL | `http://localhost:8084/api/v1` |
 | Env var binding | `LEASE_SERVICE_URL` |
-| Database | `lease_db` (dedicated PostgreSQL schema, isolated from sibling DBs) |
+| Database | `lease_db` (dedicated MySQL database, isolated from sibling DBs) |
 | Domain entities (indicative) | `Lease`, `Occupant`, `OccupancyStatus` |
 
 Because user/resident profiles belong to Group 1, this service stores **synthetic foreign IDs only** (`tenantId`, `residentId`, etc.) and resolves profile details on demand via REST calls to Group 1's services — never stores denormalized copies of their data as source of truth.
@@ -87,18 +87,18 @@ Status legend: ✅ implemented · ⏳ not yet built.
 |---|---|---|---|---|
 | ✅ | POST | `/api/v1/leases` | MANAGER | Validates tenant ID with Group 1; checks schedule conflicts |
 | ✅ | GET | `/api/v1/leases` | MANAGER | Filterable by status and an active-on date, paginated |
-| ⏳ | GET | `/api/v1/leases/{leaseId}` | MANAGER or RESIDENT | Resident access only if their `userId` appears as occupant/tenant on this lease |
-| ⏳ | GET | `/api/v1/leases/units/{unitId}` | MANAGER or OWNER | Chronological lease history for a unit |
+| ✅ | GET | `/api/v1/leases/{leaseId}` | MANAGER or RESIDENT | Resident access only if their `userId` appears as occupant/tenant on this lease |
+| ✅ | GET | `/api/v1/leases/units/{unitId}` | MANAGER or OWNER | Chronological lease history for a unit |
 | ✅ | PATCH | `/api/v1/leases/{leaseId}/status` | MANAGER | Activate / terminate / complete, with transition + re-overlap checks |
 
-**B. Physical Occupancies (public, gateway-routed)** — ⏳ not started (no `Occupant` entity yet)
+**B. Physical Occupancies (public, gateway-routed)**
 
 | | Method | Path | Auth | Notes |
 |---|---|---|---|---|
-| ⏳ | POST | `/api/v1/occupancies` | Manager | Registers physical arrival under active lease/ownership |
-| ⏳ | GET | `/api/v1/occupancies/units/{unitId}` | All roles | Current occupants of a unit |
-| ⏳ | GET | `/api/v1/occupancies/residents/{residentId}` | All roles | Occupancy history for a resident |
-| ⏳ | PATCH | `/api/v1/occupancies/{occupancyId}/status` | Manager | Soft-deactivate (→ `INACTIVE`), never hard-delete |
+| ✅ | POST | `/api/v1/occupancies` | MANAGER | Registers physical arrival under an active lease |
+| ✅ | GET | `/api/v1/occupancies/units/{unitId}` | MANAGER | Current occupants of a unit |
+| ✅ | GET | `/api/v1/occupancies/residents/{residentId}` | MANAGER or self | Occupancy history for a resident |
+| ✅ | PATCH | `/api/v1/occupancies/{occupancyId}/status` | MANAGER | Soft-deactivate (→ `INACTIVE`), never hard-delete |
 
 **C. Internal service-to-service (Gateway-routed, Service JWT — see §8; NOT unauthenticated)**
 
@@ -157,20 +157,20 @@ Implemented (on `main`, all pushed to GitHub):
 
 - Spring Boot 3.5.16 / Java 21 project scaffold, port `8084`, Controller-Service-Repository package layout.
 - SpringDoc/Swagger, split into `public` and `internal` groups, both documenting the shared `bearerAuth` (Gateway JWT) requirement.
-- Flyway `V1__create_leases_schema.sql` + `Lease` entity/repository.
+- Flyway MySQL `V1__init_lease_occupancy_schema.sql` + lease, occupant, occupancy, and unit-lock tables.
 - Shared `ApiResponse`/`ApiError`/`PaginationMeta` envelope, `BusinessException` hierarchy → stable error codes, `GlobalExceptionHandler`, `X-Request-ID` filter/`RequestContext` — the common infrastructure every future endpoint reuses.
 - **JWT authentication & authorization (§8), fully implemented:** `JwtKeyConfig` (RSA key loading, with an ephemeral-dev-key fallback), `JwtService` (verify Gateway JWTs / mint outbound Service JWTs), `JwtAuthenticationFilter` (runs on every request except `/actuator`, `/v3/api-docs`, `/swagger-ui`), `AuthContext` (role/service-caller checks called explicitly at the top of each controller method — no Spring Security, no annotation magic). `401 UNAUTHENTICATED` / `403 PERMISSION_DENIED` flow through the existing envelope.
 - `IdentityServiceClient` — now routes through the Gateway (`GATEWAY_URL`, was direct to identity-access-service) carrying a self-minted Service JWT; bounded-timeout (2s/5s); failures surface as `503 DEPENDENCY_UNAVAILABLE`.
 - Lease business rules in `LeaseService`: date validation, tenant validation, date-overlap check (Rule 1, on create *and* re-checked on activation), lease-status transition guard.
-- The five ✅ endpoints in §3's tables above, all JWT-protected (31 tests passing, `./mvnw clean verify` green).
+- Lease and physical occupancy endpoints, JWT-protected, with unit and service tests. Run `./mvnw clean verify` to verify the current checkout.
 
 ## 6. Known gaps / open follow-ups
 
 - **No real Gateway public key yet.** JWT verification (§8) is fully implemented but has never been tested against an actual Gateway — there isn't one in this repo set. Until `GATEWAY_JWT_PUBLIC_KEY` is set to a real value, this service silently generates and verifies against its own ephemeral keypair, which means it currently accepts *nothing* signed by a real Gateway and *only* tokens minted by `TestJwtTokens` in tests. Revisit as soon as the Gateway team publishes a real key.
-- **No `Occupant`/physical-occupancy entity yet** — endpoint group B (§3) is unbuilt. The internal `validate` endpoint is a stand-in, backed by `Lease.tenantId`, and should be repointed at `Occupant` once it exists.
-- **Multi-Occupancy Capacity Check (Rule 2)** and the **Maintenance Relocation Protocol (Rule 4)** are not implemented — both depend on `property-unit-service` integration (capacity limits, maintenance-status webhook/event) that hasn't been built.
-- **No Testcontainers/Postgres integration suite** — tests run against H2 with Hibernate `ddl-auto`, not the real Flyway-managed schema. Flyway migrations are exercised only when the service actually boots against PostgreSQL (e.g. via Docker Compose).
-- **No Postman collection or API Contract Registry entry yet** for this service's endpoints, despite §4 requiring both — now also needs to cover the `Authorization: Bearer <JWT>` requirement on every example.
+- **Maintenance relocation protocol (Rule 4)** remains unimplemented; it needs an agreed operations trigger and billing notification contract.
+- **No Testcontainers/MySQL integration suite** — tests run against H2 with Hibernate `ddl-auto`, not the real Flyway-managed schema. Flyway migrations need verification against MySQL.
+- **Postman collection exists**, but the project-level API Contract Registry entry and live Gateway/Identity integration evidence remain outstanding.
+- **Unit status synchronization is synchronous REST.** A network failure rolls back local activation, but a remote success followed by a local commit failure could still require reconciliation.
 - **Role list is provisional.** `MANAGER`/`RESIDENT`/`OWNER` come from this doc's own endpoint contract (§3), not a shared, ratified list of role names from Group 1 — confirm exact spelling/casing once Identity Access publishes one, since `AuthContext.requireRole` does an exact string match.
 
 ## 7. Repository & workflow conventions

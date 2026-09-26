@@ -5,10 +5,10 @@ spring:
   application:
     name: lease-occupancy-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lease_db}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3308}/${DB_NAME:lease_db}
     username: ${DB_USERNAME:lease_service}
-    password: ${DB_PASSWORD:lease_service}
-    driver-class-name: org.postgresql.Driver
+    password: ${DB_PASSWORD:lease_password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     # Schema is owned by Flyway migrations, not Hibernate auto-DDL.
     hibernate:

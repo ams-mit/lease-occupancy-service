@@ -31,8 +31,12 @@ public class UnitOccupancyController {
     @Operation(summary = "Query active unit occupancy",
             description = "Returns current occupant ID, owner ID, and active lease terms for a unit. Consumed by billing-service.")
     public ApiResponse<ActiveOccupancyResponse> getActiveOccupancy(@PathVariable UUID unitId) {
-        // Enforce that caller has a valid JWT (user or service)
-        AuthContext.current();
+        AuthContext.Principal caller = AuthContext.current();
+        if (caller.isService()) {
+            AuthContext.requireServiceCaller("billing-payment-service");
+        } else {
+            AuthContext.requireRole("MANAGER");
+        }
 
         ActiveOccupancyResponse response = leaseService.getActiveOccupancy(unitId);
         return ApiResponse.success("Active occupancy retrieved successfully", response, RequestContext.getRequestId());

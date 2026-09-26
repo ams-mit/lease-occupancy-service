@@ -133,4 +133,15 @@ class PropertyUnitServiceClientTest {
 
         mockServer.verify();
     }
+
+    @Test
+    void updateUnitStatus_failsLeaseOperationWhenPropertyIsUnavailable() {
+        UUID unitId = UUID.randomUUID();
+        Mockito.when(jwtService.mintServiceToken()).thenReturn("mock-service-token");
+        mockServer.expect(requestTo("http://gateway.test/api/v1/internal/units/" + unitId + "/status"))
+                .andRespond(withServerError());
+
+        assertThatThrownBy(() -> propertyUnitServiceClient.updateUnitStatus(unitId, "OCCUPIED"))
+                .isInstanceOf(DependencyUnavailableException.class);
+    }
 }

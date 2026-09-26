@@ -34,6 +34,11 @@ public final class AuthContext {
         return principal;
     }
 
+    public static String subjectOrSystem() {
+        Principal principal = CURRENT.get();
+        return principal == null ? "system" : principal.sub();
+    }
+
     /** Requires a {@code type=user} token whose roles include the given role. */
     public static void requireRole(String role) {
         Principal principal = current();

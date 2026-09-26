@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "lease-occupancy-service - Sprint 1",
-    "description": "Postman collection covering all Sprint 1 implemented endpoints in lease-occupancy-service.\n\nExcluded: Group B (Occupancies) and GET /leases/{id} variants which are not yet built.",
+    "description": "Postman examples for implemented lease, physical occupancy, and internal APIs. Use a Gateway-issued JWT matching each endpoint role.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -293,7 +293,64 @@
                 }
               ]
             },
-            "description": "Validates tenant occupancy on a unit. Consumed by operations-service, managers, or residents."
+            "description": "Validates physical occupancy. Operations service or manager."
+          },
+          "response": []
+        },
+        {
+          "name": "Get lease by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/leases/{{lease_id}}",
+            "description": "Manager or a resident party to the lease."
+          },
+          "response": []
+        },
+        {
+          "name": "Get unit lease history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/leases/units/{{unit_id}}",
+            "description": "Manager or owner of the unit."
+          },
+          "response": []
+        },
+        {
+          "name": "Get lease status history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/leases/{{lease_id}}/history",
+            "description": "Manager or a resident party to the lease."
           },
           "response": []
         }
@@ -301,7 +358,7 @@
     },
     {
       "name": "B. Unit Occupancy",
-      "description": "Endpoints to query active unit occupancy and lease terms for billing (P1G2-09).",
+      "description": "Physical occupancy operations plus an active lease lookup for billing.",
       "item": [
         {
           "name": "Get Active Unit Occupancy",
@@ -333,6 +390,95 @@
               ]
             },
             "description": "Returns current occupant ID, owner ID, and active lease terms for a unit. Consumed by billing-service."
+          },
+          "response": []
+        },
+        {
+          "name": "Register physical occupancy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              },
+              {
+                "value": "application/json",
+                "key": "Content-Type"
+              }
+            ],
+            "url": "{{base_url}}/occupancies",
+            "description": "Manager only; requires an active lease covering the move-in date.",
+            "body": {
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "mode": "raw",
+              "raw": "{\"unitId\":\"{{unit_id}}\",\"residentId\":\"{{resident_id}}\",\"leaseId\":\"{{lease_id}}\",\"moveInDate\":\"2026-09-26\"}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Current occupants of unit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/occupancies/units/{{unit_id}}",
+            "description": "Manager only."
+          },
+          "response": []
+        },
+        {
+          "name": "Resident occupancy history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/occupancies/residents/{{resident_id}}",
+            "description": "Manager or the resident."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate occupancy",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "value": "Bearer {{jwt_token}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "{{$guid}}",
+                "key": "X-Request-ID"
+              }
+            ],
+            "url": "{{base_url}}/occupancies/{{occupancy_id}}/status",
+            "description": "Manager only; records the move-out date."
           },
           "response": []
         }
@@ -535,6 +681,22 @@
       "key": "jwt_token",
       "value": "",
       "type": "string"
+    },
+    {
+      "value": "123e4567-e89b-12d3-a456-426614174000",
+      "key": "unit_id"
+    },
+    {
+      "value": "123e4567-e89b-12d3-a456-426614174001",
+      "key": "resident_id"
+    },
+    {
+      "value": "",
+      "key": "lease_id"
+    },
+    {
+      "value": "",
+      "key": "occupancy_id"
     }
   ]
 }

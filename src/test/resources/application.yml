@@ -1,8 +1,8 @@
 # Test-only profile: an in-memory H2 database stands in for lease_db so the context
-# can load in CI/local test runs without a running PostgreSQL instance.
+# can load in CI/local test runs without a running MySQL instance.
 spring:
   datasource:
-    url: jdbc:h2:mem:lease_db_test;MODE=PostgreSQL
+    url: jdbc:h2:mem:lease_db_test;MODE=MySQL
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -11,8 +11,8 @@ spring:
       ddl-auto: create-drop
     open-in-view: false
   flyway:
-    # Flyway migrations target real PostgreSQL syntax; tests use Hibernate
-    # ddl-auto against H2 instead. A Testcontainers-based Postgres suite is the
+    # Flyway migrations target real MySQL syntax; tests use Hibernate
+    # ddl-auto against H2 instead. A Testcontainers-based MySQL suite is the
     # natural follow-up for migration-accurate integration tests.
     enabled: false
 
