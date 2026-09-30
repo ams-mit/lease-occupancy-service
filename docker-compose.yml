@@ -4,10 +4,10 @@ services:
     ports:
       - "3308:3306"
     environment:
-      MYSQL_DATABASE: ${DB_NAME:-lease_db}
+      MYSQL_DATABASE: lease_occupancy_db
       MYSQL_USER: ${DB_USERNAME:-lease_service}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-lease_password}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-local_root_password}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD}
     volumes:
       - lease_db_data:/var/lib/mysql
     healthcheck:
@@ -25,9 +25,9 @@ services:
     ports:
       - "8084:8084"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://lease_db:3306/${DB_NAME:-lease_db}
+      SPRING_DATASOURCE_URL: jdbc:mysql://lease_db:3306/lease_occupancy_db
       DB_USERNAME: ${DB_USERNAME:-lease_service}
-      DB_PASSWORD: ${DB_PASSWORD:-lease_password}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       GATEWAY_URL: ${GATEWAY_URL:-http://host.docker.internal:8080}
       GATEWAY_JWT_PUBLIC_KEY: ${GATEWAY_JWT_PUBLIC_KEY:-}
       SERVICE_JWT_PRIVATE_KEY: ${SERVICE_JWT_PRIVATE_KEY:-}
