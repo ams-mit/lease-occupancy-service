@@ -5,14 +5,14 @@ spring:
   application:
     name: lease-occupancy-service
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3308}/${DB_NAME:lease_db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3308}/${DB_NAME:lease_occupancy_db}}
     username: ${DB_USERNAME:lease_service}
-    password: ${DB_PASSWORD:lease_password}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     # Schema is owned by Flyway migrations, not Hibernate auto-DDL.
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
@@ -28,6 +28,9 @@ management:
       show-details: when-authorized
   info:
     env:
+    enabled: true
+  health:
+    db:
       enabled: true
 
 info:

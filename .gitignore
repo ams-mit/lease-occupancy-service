@@ -8,6 +8,8 @@ target/
 *.pem
 *.key
 .env
+*-local.yml
+application-local.yml
 
 ### OS ###
 .DS_Store
