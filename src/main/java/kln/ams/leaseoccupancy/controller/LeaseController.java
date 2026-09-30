@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -106,7 +107,8 @@ public class LeaseController {
                 status,
                 startDate,
                 endDate,
-                PageRequest.of(page, size));
+                // Newest first, so paging is stable and a just-created lease is on page one.
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<LeaseResponse> data = result.map(LeaseResponse::from).getContent();
         return ApiResponse.successPage("Leases retrieved successfully", data, PaginationMeta.from(result), RequestContext.getRequestId());

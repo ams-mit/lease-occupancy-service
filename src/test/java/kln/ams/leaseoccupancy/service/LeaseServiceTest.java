@@ -141,7 +141,7 @@ class LeaseServiceTest {
     @Test
     void updateStatus_throwsNotFound_whenLeaseMissing() {
         UUID leaseId = UUID.randomUUID();
-        when(leaseRepository.findById(leaseId)).thenReturn(Optional.empty());
+        when(leaseRepository.findWithOccupants(leaseId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> leaseService.updateStatus(leaseId, new LeaseStatusUpdateRequest(LeaseStatus.ACTIVE, null)))
                 .isInstanceOf(LeaseNotFoundException.class);
@@ -150,7 +150,7 @@ class LeaseServiceTest {
     @Test
     void updateStatus_rejects_illegalTransitionFromTerminated() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.TERMINATED);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
 
         assertThatThrownBy(() -> leaseService.updateStatus(lease.getId(), new LeaseStatusUpdateRequest(LeaseStatus.ACTIVE, null)))
                 .isInstanceOf(InvalidLeaseStatusTransitionException.class);
@@ -170,7 +170,7 @@ class LeaseServiceTest {
     @Test
     void updateStatus_rechecksTenantBeforeActivation() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(propertyUnitServiceClient.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
         when(residents.isValidResident(tenantId)).thenReturn(false);
 
@@ -183,7 +183,7 @@ class LeaseServiceTest {
     void updateStatus_rejectsActivationBeforeLeaseStarts() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         lease.setStartDate(LocalDate.now().plusDays(1));
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
 
         assertThatThrownBy(() -> leaseService.updateStatus(
                 lease.getId(), new LeaseStatusUpdateRequest(LeaseStatus.ACTIVE, null)))
@@ -196,7 +196,7 @@ class LeaseServiceTest {
         Occupancy occupancy = new Occupancy();
         occupancy.setUnitId(unitId);
         occupancy.setStatus(OccupancyStatus.ACTIVE);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(leaseRepository.save(lease)).thenReturn(lease);
         when(occupancyRepository.findByLeaseIdAndStatus(lease.getId(), OccupancyStatus.ACTIVE))
                 .thenReturn(List.of(occupancy));
@@ -210,7 +210,7 @@ class LeaseServiceTest {
     @Test
     void updateStatus_activates_whenCapacity1AndNoConflict() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 1, UUID.randomUUID()));
@@ -229,7 +229,7 @@ class LeaseServiceTest {
     @Test
     void updateStatus_rejects_whenUnitIsUnderMaintenance() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "UNDER_MAINTENANCE", 1, UUID.randomUUID()));
 
@@ -242,7 +242,7 @@ class LeaseServiceTest {
     void updateStatus_rejectsWithConflict_whenCapacity1AndDatesOverlap() {
         // Acceptance Scenario: Rejection of Overlapping Date Ranges (Single Unit, capacity = 1) -> 409
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 1, UUID.randomUUID()));
@@ -260,7 +260,7 @@ class LeaseServiceTest {
     void updateStatus_activates_whenMultiOccupancyUnderCapacity() {
         // Acceptance Scenario: Multi-Occupancy Under Capacity (capacity = 3, 2 active tenants -> 3rd activates successfully)
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 3, UUID.randomUUID()));
@@ -280,7 +280,7 @@ class LeaseServiceTest {
     void updateStatus_rejectsWith422_whenMultiOccupancyOverCapacity() {
         // Acceptance Scenario: Multi-Occupancy Over Capacity (capacity = 3, 3 active leases -> 4th rejected with 422)
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
-        when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
+        when(leaseRepository.findWithOccupants(lease.getId())).thenReturn(Optional.of(lease));
         when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 3, UUID.randomUUID()));
