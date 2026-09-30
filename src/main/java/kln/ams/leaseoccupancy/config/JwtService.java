@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Verifies inbound Gateway-signed JWTs and mints outbound Service JWTs, per
- * Project_A_JWT_Authentication_and_Security_Standard.md. This service never signs or
+ * PROJECT-A-JWT-SECURITY-STANDARD.md. This service never signs or
  * verifies anything but its own outbound Service JWT and the Gateway's tokens — it
  * never needs another backend service's key (§10-11 of the standard).
  */
@@ -51,8 +51,11 @@ public class JwtService {
                     .verifyWith(gatewayPublicKey)
                     .build()
                     .parseSignedClaims(token);
-            if (!"RS256".equals(jwt.getHeader().getAlgorithm())) throw new IllegalArgumentException("Unsupported algorithm");
+            if (!"RS256".equals(jwt.getHeader().getAlgorithm())
+                    || !"JWT".equals(jwt.getHeader().getType())
+                    || jwt.getHeader().getKeyId() != null) throw new IllegalArgumentException("Unsupported JWT header");
             Claims claims = jwt.getPayload();
+            if (claims.containsKey("iss") || claims.containsKey("aud")) throw new IllegalArgumentException("Unsupported JWT claims");
             if (claims.getSubject() == null || claims.getIssuedAt() == null || claims.getExpiration() == null
                     || !claims.getExpiration().after(claims.getIssuedAt()) || claims.getIssuedAt().after(new Date())) {
                 throw new IllegalArgumentException("Invalid JWT claims");
@@ -79,6 +82,7 @@ public class JwtService {
     public String mintServiceToken() {
         Instant now = Instant.now();
         return Jwts.builder()
+                .header().type("JWT").and()
                 .subject(serviceName)
                 .claim("type", "service")
                 .issuedAt(Date.from(now))

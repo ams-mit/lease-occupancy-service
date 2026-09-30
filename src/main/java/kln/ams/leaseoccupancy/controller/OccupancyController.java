@@ -12,6 +12,8 @@ import kln.ams.leaseoccupancy.dto.PaginationMeta;
 import kln.ams.leaseoccupancy.entity.Occupancy;
 import kln.ams.leaseoccupancy.entity.OccupancyStatus;
 import kln.ams.leaseoccupancy.exception.ForbiddenException;
+import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
+import kln.ams.leaseoccupancy.exception.InvalidRequestException;
 import kln.ams.leaseoccupancy.service.OccupancyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -55,7 +57,7 @@ public class OccupancyController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Register physical move-in/occupancy")
+    @Operation(operationId = "LEASE-008", summary = "Register physical move-in/occupancy")
     public ApiResponse<OccupancyResponse> register(@Valid @RequestBody OccupancyCreateRequest request) {
         AuthContext.requireManagement();
         Occupancy occupancy = occupancyService.register(request);
@@ -67,7 +69,7 @@ public class OccupancyController {
      * Roles: APARTMENT_MANAGER, SYSTEM_ADMINISTRATOR, authorized owner/resident.
      */
     @GetMapping("/units/{unitId}")
-    @Operation(summary = "List occupants by unit", description = "Supports status filtering, history inclusion, and pagination.")
+    @Operation(operationId = "LEASE-009", summary = "List occupants by unit", description = "Supports status filtering, history inclusion, and pagination.")
     public ApiResponse<List<OccupancyResponse>> listOccupantsByUnit(
             @PathVariable UUID unitId,
             @RequestParam(required = false) OccupancyStatus status,
@@ -81,16 +83,17 @@ public class OccupancyController {
         }
 
         if (!AuthContext.isManagement(caller)) {
-            UnitDetailsResponse unit = propertyUnitServiceClient.getUnitDetails(unitId);
-            boolean isOwner = unit != null && unit.ownerId() != null && unit.ownerId().toString().equals(caller.sub());
-            boolean isResident = caller.roles().contains("TENANT_RESIDENT");
-            if (!isOwner && !isResident) {
-                throw new ForbiddenException("Caller is not authorized to view occupants of unit " + unitId);
+            if (caller.roles().contains("OWNER") || caller.roles().contains("TENANT_RESIDENT")) {
+                throw new DependencyUnavailableException("resident-management-service", null);
             }
+            throw new ForbiddenException("Resident or owner scope requires the Resident Management relationship contract");
+        }
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("page must be nonnegative and size must be between 1 and 100");
         }
 
         Page<Occupancy> result = occupancyService.listOccupantsForUnit(
-                unitId, status, includeHistory, PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE)));
+                unitId, status, includeHistory, PageRequest.of(page, size));
 
         List<OccupancyResponse> data = result.map(OccupancyResponse::from).getContent();
         return ApiResponse.successPage("Occupants retrieved successfully", data, PaginationMeta.from(result), RequestContext.getRequestId());
@@ -101,15 +104,18 @@ public class OccupancyController {
      * Roles: Management or authorized self.
      */
     @GetMapping("/residents/{residentId}")
-    @Operation(summary = "Resident occupancy history")
+    @Operation(operationId = "LEASE-010", summary = "Resident occupancy history")
     public ApiResponse<List<OccupancyResponse>> historyForResident(@PathVariable UUID residentId) {
         AuthContext.Principal caller = AuthContext.current();
         if (!caller.isUser()) {
             throw new ForbiddenException("User authentication required");
         }
 
-        if (!AuthContext.isManagement(caller) && !residentId.toString().equals(caller.sub())) {
-            throw new ForbiddenException("Only management or the resident can view this occupancy history");
+        if (!AuthContext.isManagement(caller)) {
+            if (caller.roles().contains("TENANT_RESIDENT")) {
+                throw new DependencyUnavailableException("resident-management-service", null);
+            }
+            throw new ForbiddenException("Resident self scope requires the Resident Management relationship contract");
         }
 
         List<OccupancyResponse> data = occupancyService.historyForResident(residentId).stream()
@@ -124,7 +130,7 @@ public class OccupancyController {
      * Roles: APARTMENT_MANAGER, SYSTEM_ADMINISTRATOR.
      */
     @PatchMapping("/{occupancyId}/status")
-    @Operation(summary = "Record move-out / deactivate occupancy")
+    @Operation(operationId = "LEASE-011", summary = "Record move-out / deactivate occupancy")
     public ApiResponse<OccupancyResponse> updateStatus(
             @PathVariable UUID occupancyId, @Valid @RequestBody OccupancyStatusUpdateRequest request) {
 

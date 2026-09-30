@@ -5,8 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import kln.ams.leaseoccupancy.client.IdentityServiceClient;
-import kln.ams.leaseoccupancy.client.IdentityUserValidation;
+import kln.ams.leaseoccupancy.client.ResidentServiceClient;
 import kln.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import kln.ams.leaseoccupancy.client.UnitDetailsResponse;
 import kln.ams.leaseoccupancy.dto.OccupancyCreateRequest;
@@ -33,7 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class OccupancyServiceTest {
     @Mock OccupancyRepository occupancies;
     @Mock LeaseRepository leases;
-    @Mock IdentityServiceClient identity;
+    @Mock ResidentServiceClient residents;
     @Mock PropertyUnitServiceClient property;
     @Mock UnitLockService locks;
     @Mock OccupancyStatusHistoryRepository statusHistory;
@@ -61,7 +60,7 @@ class OccupancyServiceTest {
     @Test
     void register_acceptsPermittedResidentWithActiveLease() {
         when(leases.findById(leaseId)).thenReturn(Optional.of(lease));
-        when(identity.validateUser(residentId)).thenReturn(new IdentityUserValidation(residentId, true, true));
+        when(residents.isValidResident(residentId)).thenReturn(true);
         when(property.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "OCCUPIED", 1, null));
         when(occupancies.save(any(Occupancy.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -75,6 +74,7 @@ class OccupancyServiceTest {
     void register_rejectsResidentOutsideLease() {
         UUID otherResident = UUID.randomUUID();
         when(leases.findById(leaseId)).thenReturn(Optional.of(lease));
+        when(property.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "OCCUPIED", 1, null));
 
         assertThatThrownBy(() -> service.register(
                 new OccupancyCreateRequest(unitId, otherResident, leaseId, LocalDate.now(), "Move-in completed")))
@@ -84,7 +84,7 @@ class OccupancyServiceTest {
     @Test
     void register_rejectsDuplicateActiveOccupancy() {
         when(leases.findById(leaseId)).thenReturn(Optional.of(lease));
-        when(identity.validateUser(residentId)).thenReturn(new IdentityUserValidation(residentId, true, true));
+        when(residents.isValidResident(residentId)).thenReturn(true);
         when(property.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "OCCUPIED", 1, null));
         when(occupancies.existsByUnitIdAndResidentIdAndStatus(unitId, residentId, OccupancyStatus.ACTIVE))
                 .thenReturn(true);

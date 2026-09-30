@@ -1,672 +1,559 @@
 {
   "info": {
-    "name": "lease-occupancy-service - Sprint 1",
-    "description": "Postman examples for implemented lease, physical occupancy, and internal APIs. Use a Gateway-issued JWT matching each endpoint role.",
+    "name": "Project A \u2014 Lease Occupancy v1",
+    "description": "Canonical 11 user and 3 internal endpoints. Send requests through the API Gateway. User and service JWTs are distinct.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "A. Contractual Leases",
-      "description": "Public, gateway-routed lease endpoints. Requires a User JWT with the MANAGER role.",
+      "name": "Public user APIs",
       "item": [
         {
-          "name": "Create a lease",
+          "name": "LEASE-001 POST /leases",
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
                 "value": "application/json"
               },
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
               },
               {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
+            "url": "{{base_url}}/leases",
+            "description": "LEASE-001 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n  \"startDate\": \"2030-01-01\",\n  \"endDate\": \"2031-01-01\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/leases",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "leases"
-              ]
-            },
-            "description": "Requires User JWT with role MANAGER. Validates tenant and checks for schedule conflicts."
-          },
-          "response": [
-            {
-              "name": "Success",
-              "originalRequest": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": ""
-                },
-                "url": {
-                  "raw": "{{base_url}}/leases",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "leases"
-                  ]
-                }
-              },
-              "status": "Created",
-              "code": 201,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"message\": \"Lease created successfully\",\n  \"data\": {\n    \"id\": \"b9bc1f15-0d5b-43d9-9529-6887550fba20\",\n    \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n    \"status\": \"DRAFT\"\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
-            },
-            {
-              "name": "Conflict Error",
-              "originalRequest": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": ""
-                },
-                "url": {
-                  "raw": "{{base_url}}/leases",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "leases"
-                  ]
-                }
-              },
-              "status": "Conflict",
-              "code": 409,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": false,\n  \"message\": \"Date overlap conflict\",\n  \"error\": {\n    \"code\": \"OCCUPANCY_CONFLICT\",\n    \"details\": null\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
-            }
-          ]
-        },
-        {
-          "name": "List leases",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/leases?status=ACTIVE&activeOn=2030-06-01&page=0&size=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "leases"
-              ],
-              "query": [
-                {
-                  "key": "status",
-                  "value": "ACTIVE",
-                  "description": "Optional: DRAFT, ACTIVE, TERMINATED, COMPLETED"
-                },
-                {
-                  "key": "activeOn",
-                  "value": "2030-06-01",
-                  "description": "Optional: ISO Date"
-                },
-                {
-                  "key": "page",
-                  "value": "0"
-                },
-                {
-                  "key": "size",
-                  "value": "20"
-                }
-              ]
-            },
-            "description": "Requires User JWT with role MANAGER. Filterable by status and an active-on date, paginated."
-          },
-          "response": [
-            {
-              "name": "Success",
-              "originalRequest": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/leases?status=ACTIVE&activeOn=2030-06-01&page=0&size=20",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "leases"
-                  ]
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"message\": \"Leases retrieved successfully\",\n  \"data\": [],\n  \"pagination\": {\n    \"page\": 0,\n    \"size\": 20,\n    \"totalElements\": 0,\n    \"totalPages\": 0\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
-            }
-          ]
-        },
-        {
-          "name": "Update lease status",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"reason\": \"Tenant moved in\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "leases",
-                "b9bc1f15-0d5b-43d9-9529-6887550fba20",
-                "status"
-              ]
-            },
-            "description": "Requires User JWT with role MANAGER. Activates, terminates, or completes a lease."
-          },
-          "response": [
-            {
-              "name": "Success",
-              "originalRequest": {
-                "method": "PATCH",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": ""
-                },
-                "url": {
-                  "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "leases",
-                    "b9bc1f15-0d5b-43d9-9529-6887550fba20",
-                    "status"
-                  ]
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"message\": \"Lease status updated successfully\",\n  \"data\": {\n    \"id\": \"b9bc1f15-0d5b-43d9-9529-6887550fba20\",\n    \"status\": \"ACTIVE\"\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
-            },
-            {
-              "name": "Validation Error",
-              "originalRequest": {
-                "method": "PATCH",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": ""
-                },
-                "url": {
-                  "raw": "{{base_url}}/leases/b9bc1f15-0d5b-43d9-9529-6887550fba20/status",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "leases",
-                    "b9bc1f15-0d5b-43d9-9529-6887550fba20",
-                    "status"
-                  ]
-                }
-              },
-              "status": "Bad Request",
-              "code": 400,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": false,\n  \"message\": \"status is required\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"details\": null\n  },\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
-            }
-          ]
-        },
-        {
-          "name": "Validate lease occupancy (Operations alias)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/leases/validate?tenantId=123e4567-e89b-12d3-a456-426614174001&unitId=123e4567-e89b-12d3-a456-426614174000",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "leases",
-                "validate"
-              ],
-              "query": [
-                {
-                  "key": "tenantId",
-                  "value": "123e4567-e89b-12d3-a456-426614174001"
-                },
-                {
-                  "key": "unitId",
-                  "value": "123e4567-e89b-12d3-a456-426614174000"
-                }
-              ]
-            },
-            "description": "Validates physical occupancy. Operations service or manager."
-          },
-          "response": []
-        },
-        {
-          "name": "Get lease by ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
-              },
-              {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
-              }
-            ],
-            "url": "{{base_url}}/leases/{{lease_id}}",
-            "description": "Manager or a resident party to the lease."
-          },
-          "response": []
-        },
-        {
-          "name": "Get unit lease history",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
-              },
-              {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
-              }
-            ],
-            "url": "{{base_url}}/leases/units/{{unit_id}}",
-            "description": "Manager or owner of the unit."
-          },
-          "response": []
-        },
-        {
-          "name": "Get lease status history",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
-              },
-              {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
-              }
-            ],
-            "url": "{{base_url}}/leases/{{lease_id}}/history",
-            "description": "Manager or a resident party to the lease."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "B. Unit Occupancy",
-      "description": "Physical occupancy operations plus an active lease lookup for billing.",
-      "item": [
-        {
-          "name": "Get Active Unit Occupancy",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/units/123e4567-e89b-12d3-a456-426614174000/active-occupancy",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "units",
-                "123e4567-e89b-12d3-a456-426614174000",
-                "active-occupancy"
-              ]
-            },
-            "description": "Returns current occupant ID, owner ID, and active lease terms for a unit. Consumed by billing-service."
-          },
-          "response": []
-        },
-        {
-          "name": "Register physical occupancy",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
-              },
-              {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
-              },
-              {
-                "value": "application/json",
-                "key": "Content-Type"
-              }
-            ],
-            "url": "{{base_url}}/occupancies",
-            "description": "Manager only; requires an active lease covering the move-in date.",
-            "body": {
+              "raw": "{\n  \"unitId\": \"{{unit_id}}\",\n  \"startDate\": \"2026-10-01\",\n  \"endDate\": \"2027-09-30\",\n  \"occupants\": [\n    {\n      \"residentId\": \"{{resident_id}}\"\n    }\n  ],\n  \"notes\": \"Annual lease\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\"unitId\":\"{{unit_id}}\",\"residentId\":\"{{resident_id}}\",\"leaseId\":\"{{lease_id}}\",\"moveInDate\":\"2026-09-26\"}"
+              }
             }
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Current occupants of unit",
+          "name": "LEASE-002 GET /leases?page=0&size=20&unitId={{unit_id}}",
           "request": {
             "method": "GET",
             "header": [
               {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
               },
               {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
               }
             ],
-            "url": "{{base_url}}/occupancies/units/{{unit_id}}",
-            "description": "Manager only."
+            "url": "{{base_url}}/leases?page=0&size=20&unitId={{unit_id}}",
+            "description": "LEASE-002 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Resident occupancy history",
+          "name": "LEASE-003 GET /leases/{{lease_id}}",
           "request": {
             "method": "GET",
             "header": [
               {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
               },
               {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
               }
             ],
-            "url": "{{base_url}}/occupancies/residents/{{resident_id}}",
-            "description": "Manager or the resident."
+            "url": "{{base_url}}/leases/{{lease_id}}",
+            "description": "LEASE-003 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Deactivate occupancy",
+          "name": "LEASE-004 GET /leases/{{lease_id}}/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              }
+            ],
+            "url": "{{base_url}}/leases/{{lease_id}}/history",
+            "description": "LEASE-004 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-005 GET /leases/units/{{unit_id}}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              }
+            ],
+            "url": "{{base_url}}/leases/units/{{unit_id}}",
+            "description": "LEASE-005 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-006 PATCH /leases/{{lease_id}}/status",
           "request": {
             "method": "PATCH",
             "header": [
               {
-                "value": "Bearer {{jwt_token}}",
-                "key": "Authorization"
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
               },
               {
-                "value": "{{$guid}}",
-                "key": "X-Request-ID"
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/leases/{{lease_id}}/status",
+            "description": "LEASE-006 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"reason\": \"Approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-008 POST /occupancies",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/occupancies",
+            "description": "LEASE-008 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitId\": \"{{unit_id}}\",\n  \"leaseId\": \"{{lease_id}}\",\n  \"residentId\": \"{{resident_id}}\",\n  \"startDate\": \"2026-10-01\",\n  \"notes\": \"Move-in\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-009 GET /occupancies/units/{{unit_id}}?includeHistory=false&page=0&size=20",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              }
+            ],
+            "url": "{{base_url}}/occupancies/units/{{unit_id}}?includeHistory=false&page=0&size=20",
+            "description": "LEASE-009 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-010 GET /occupancies/residents/{{resident_id}}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              }
+            ],
+            "url": "{{base_url}}/occupancies/residents/{{resident_id}}",
+            "description": "LEASE-010 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-011 PATCH /occupancies/{{occupancy_id}}/status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": "{{base_url}}/occupancies/{{occupancy_id}}/status",
-            "description": "Manager only; records the move-out date."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "C. Internal Service-to-Service",
-      "description": "Gateway-routed, service-to-service only endpoints. Requires a Service JWT (sub=allowed-caller).",
-      "item": [
-        {
-          "name": "Validate Occupancy",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "X-Request-ID",
-                "value": "{{$guid}}"
+            "description": "LEASE-011 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ENDED\",\n  \"reason\": \"Moved out\",\n  \"effectiveDate\": \"2027-09-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
               }
-            ],
-            "url": {
-              "raw": "{{base_url}}/internal/occupancies/validate?tenantId=123e4567-e89b-12d3-a456-426614174001&unitId=123e4567-e89b-12d3-a456-426614174000",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "internal",
-                "occupancies",
-                "validate"
-              ],
-              "query": [
-                {
-                  "key": "tenantId",
-                  "value": "123e4567-e89b-12d3-a456-426614174001"
-                },
-                {
-                  "key": "unitId",
-                  "value": "123e4567-e89b-12d3-a456-426614174000"
-                }
-              ]
-            },
-            "description": "Requires Service JWT with sub=operations-service. Check whether a tenant actively resides in a unit."
+            }
           },
-          "response": [
+          "event": [
             {
-              "name": "Success",
-              "originalRequest": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/internal/occupancies/validate?tenantId=123e4567-e89b-12d3-a456-426614174001&unitId=123e4567-e89b-12d3-a456-426614174000",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "internal",
-                    "occupancies",
-                    "validate"
-                  ]
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"message\": \"Occupancy validation completed\",\n  \"data\": {\n    \"tenantId\": \"123e4567-e89b-12d3-a456-426614174001\",\n    \"unitId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"active\": true\n  },\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
             }
           ]
         },
         {
-          "name": "Active Billing Targets",
+          "name": "LEASE-012 GET /units/{{unit_id}}/active-occupancy",
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Content-Type",
+                "key": "Authorization",
+                "value": "Bearer {{user_jwt}}"
+              },
+              {
+                "key": "Accept",
                 "value": "application/json"
               },
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}"
-              },
-              {
                 "key": "X-Request-ID",
-                "value": "{{$guid}}"
+                "value": "{{request_id}}"
               }
             ],
-            "url": {
-              "raw": "{{base_url}}/internal/occupancies/active-billing",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "internal",
-                "occupancies",
-                "active-billing"
-              ]
-            },
-            "description": "Requires Service JWT with sub=billing-payment-service. List active units and their billing targets."
+            "url": "{{base_url}}/units/{{unit_id}}/active-occupancy",
+            "description": "LEASE-012 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
           },
-          "response": [
+          "event": [
             {
-              "name": "Success",
-              "originalRequest": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/internal/occupancies/active-billing",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "internal",
-                    "occupancies",
-                    "active-billing"
-                  ]
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active billing targets retrieved successfully\",\n  \"data\": [],\n  \"pagination\": null,\n  \"timestamp\": \"2026-09-25T12:00:00Z\",\n  \"requestId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
             }
           ]
         }
       ]
     },
     {
-      "name": "D. System Operations",
-      "description": "Unauthenticated infra/tooling endpoints.",
+      "name": "Internal service APIs",
       "item": [
         {
-          "name": "Actuator Health",
+          "name": "LEASE-INT-001 GET /internal/units/{{unit_id}}/occupancy",
           "request": {
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{service_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
                 "key": "X-Request-ID",
-                "value": "{{$guid}}"
+                "value": "{{request_id}}"
               }
             ],
-            "url": {
-              "raw": "http://localhost:8084/actuator/health",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8084",
-              "path": [
-                "actuator",
-                "health"
-              ]
-            },
-            "description": "App and DB health (unauthenticated)."
+            "url": "{{base_url}}/internal/units/{{unit_id}}/occupancy",
+            "description": "LEASE-INT-001 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Actuator Info",
+          "name": "LEASE-INT-002 GET /internal/units/{{unit_id}}/occupants",
           "request": {
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{service_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
                 "key": "X-Request-ID",
-                "value": "{{$guid}}"
+                "value": "{{request_id}}"
               }
             ],
-            "url": {
-              "raw": "http://localhost:8084/actuator/info",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8084",
-              "path": [
-                "actuator",
-                "info"
-              ]
-            },
-            "description": "Deployment metadata (unauthenticated)."
+            "url": "{{base_url}}/internal/units/{{unit_id}}/occupants",
+            "description": "LEASE-INT-002 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LEASE-INT-003 GET /internal/users/{{user_id}}/occupancy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{service_jwt}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}"
+              }
+            ],
+            "url": "{{base_url}}/internal/users/{{user_id}}/occupancy",
+            "description": "LEASE-INT-003 \u2014 see LEASE-OCCUPANCY-SERVICE.md for roles, validation, and error codes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Standard success envelope', function () { const b=pm.response.json(); pm.expect(b.success).to.eql(true); pm.expect(b).to.have.property('message'); pm.expect(b).to.have.property('data'); pm.expect(b).to.have.property('timestamp'); pm.expect(b).to.have.property('requestId'); });",
+                  "pm.test('Request ID propagated', function () { pm.expect(pm.response.json().requestId).to.eql(pm.variables.get('request_id')); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
@@ -674,29 +561,39 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:8084/api/v1",
-      "type": "string"
+      "value": "http://localhost:8080/api/v1"
     },
     {
-      "key": "jwt_token",
-      "value": "",
-      "type": "string"
+      "key": "user_jwt",
+      "value": ""
     },
     {
-      "value": "123e4567-e89b-12d3-a456-426614174000",
-      "key": "unit_id"
+      "key": "service_jwt",
+      "value": ""
     },
     {
-      "value": "123e4567-e89b-12d3-a456-426614174001",
-      "key": "resident_id"
+      "key": "request_id",
+      "value": "7f83a9b2-7507-4dc2-a031-8e89e7a67018"
     },
     {
-      "value": "",
-      "key": "lease_id"
+      "key": "unit_id",
+      "value": ""
     },
     {
-      "value": "",
-      "key": "occupancy_id"
+      "key": "lease_id",
+      "value": ""
+    },
+    {
+      "key": "occupancy_id",
+      "value": ""
+    },
+    {
+      "key": "resident_id",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
     }
   ]
 }

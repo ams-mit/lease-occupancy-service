@@ -3,7 +3,7 @@ package kln.ams.leaseoccupancy.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
-/** Standard success/error response envelope shared by every AMS microservice (API-STANDARD-v1 §11, §15). */
+/** Standard success/error response envelope shared by every AMS microservice (PROJECT-A-GLOBAL-API-STANDARD §11, §15). */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ApiResponse<T>(
         boolean success,

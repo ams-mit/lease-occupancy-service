@@ -21,10 +21,11 @@ import kln.ams.leaseoccupancy.exception.LeaseConflictException;
 import kln.ams.leaseoccupancy.exception.LeaseNotFoundException;
 import kln.ams.leaseoccupancy.service.LeaseService;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -141,6 +142,43 @@ class LeaseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("ACTIVE"))
                 .andExpect(jsonPath("$.pagination.totalElements").value(1));
+    }
+
+    @Test
+    void leaseReadsAndHistoryUseCanonicalRoutes() throws Exception {
+        Lease lease = sampleLease(LeaseStatus.ACTIVE);
+        when(leaseService.getLease(lease.getId())).thenReturn(lease);
+        when(leaseService.statusHistory(lease.getId())).thenReturn(List.of());
+        when(leaseService.historyForUnit(lease.getUnitId())).thenReturn(List.of(lease));
+
+        mockMvc.perform(asManager(get("/api/v1/leases/{id}", lease.getId())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(lease.getId().toString()));
+        mockMvc.perform(asManager(get("/api/v1/leases/{id}/history", lease.getId())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.leaseId").value(lease.getId().toString()));
+        mockMvc.perform(asManager(get("/api/v1/leases/units/{id}", lease.getUnitId())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(lease.getId().toString()));
+    }
+
+    @Test
+    void ownerFilterAndInvalidPagination() throws Exception {
+        UUID ownerId = UUID.randomUUID();
+        when(leaseService.listLeases(any(), any(), eq(ownerId), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        mockMvc.perform(asManager(get("/api/v1/leases")).param("ownerId", ownerId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pagination.totalElements").value(0));
+        mockMvc.perform(asManager(get("/api/v1/leases")).param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void updateStatusReturnsUpdatedLease() throws Exception {
+        Lease lease = sampleLease(LeaseStatus.ACTIVE);
+        when(leaseService.updateStatus(eq(lease.getId()), any())).thenReturn(lease);
+        mockMvc.perform(asManager(patch("/api/v1/leases/{id}/status", lease.getId()))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("ACTIVE"));
     }
 
     @Test

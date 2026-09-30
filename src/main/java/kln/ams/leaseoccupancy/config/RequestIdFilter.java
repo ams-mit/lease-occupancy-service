@@ -17,7 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Reads the incoming X-Request-ID (generating one if the caller omitted it), echoes it
  * back on the response, and makes it available via {@link RequestContext} for the
  * duration of the request so it can be logged and included in the response envelope,
- * per API-STANDARD-v1 §8. Ordered ahead of {@link JwtAuthenticationFilter} so even a
+ * per PROJECT-A-GLOBAL-API-STANDARD §8. Ordered ahead of {@link JwtAuthenticationFilter} so even a
  * rejected (401/403) request gets a trace ID.
  */
 @Component
@@ -30,7 +30,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String requestId = request.getHeader(REQUEST_ID_HEADER);
-        if (!StringUtils.hasText(requestId)) {
+        if (!StringUtils.hasText(requestId) || !isValidUuid(requestId)) {
             requestId = UUID.randomUUID().toString();
         }
 
@@ -40,6 +40,14 @@ public class RequestIdFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             MDC.remove(RequestContext.MDC_KEY);
+        }
+    }
+
+    private boolean isValidUuid(String value) {
+        try {
+            return UUID.fromString(value).toString().equalsIgnoreCase(value);
+        } catch (IllegalArgumentException ex) {
+            return false;
         }
     }
 }

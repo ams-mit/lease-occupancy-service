@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 public class UnitUnderMaintenanceException extends BusinessException {
 
     public UnitUnderMaintenanceException(UUID unitId) {
-        super(HttpStatus.CONFLICT, "BUSINESS_RULE_VIOLATION",
+        super(HttpStatus.CONFLICT, "OCCUPANCY_CONFLICT",
                 "Unit " + unitId + " is under maintenance and cannot accept lease activation");
     }
 }

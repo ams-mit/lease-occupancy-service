@@ -12,7 +12,7 @@ import org.springframework.web.client.RestClient;
  * REST client for outbound calls. Per the JWT standard (AGENTS.md §8), this service never
  * calls a sibling service directly — every outbound call goes through the Gateway, carrying
  * a Service JWT the Gateway verifies and re-signs before forwarding. Bounded connect/read
- * timeouts per API-STANDARD-v1 §29 — this service must never wait indefinitely on a dependency.
+ * timeouts per PROJECT-A-GLOBAL-API-STANDARD §29 — this service must never wait indefinitely on a dependency.
  */
 @Configuration
 public class ServiceClientsConfig {

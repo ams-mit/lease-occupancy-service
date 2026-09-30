@@ -5,7 +5,7 @@ Follows the canonical architecture defined in `LEASE-OCCUPANCY-SERVICE.md`, `PRO
 
 ## Stack
 
-- Java 21, Spring Boot 3.5.x (Web, Data JPA, Validation, Actuator, Flyway)
+- Java 21, Spring Boot 4.1.1 (Web MVC, Data JPA, Validation, Actuator, Flyway)
 - Maven (`kln.ams:lease-occupancy-service`, package: `kln.ams.leaseoccupancy`)
 - MySQL (`lease_occupancy_db`), owned exclusively by this service
 - RS256 JWT (jjwt) for Gateway User JWT verification and outbound Service JWT signing
@@ -24,7 +24,7 @@ Follows the canonical architecture defined in `LEASE-OCCUPANCY-SERVICE.md`, `PRO
 8. **LEASE-009**: `GET /api/v1/occupancies/units/{unitId}` — List occupants by unit (`APARTMENT_MANAGER`, `SYSTEM_ADMINISTRATOR`, authorized owner/resident)
 9. **LEASE-010**: `GET /api/v1/occupancies/residents/{residentId}` — Resident occupancy history (Management, authorized resident)
 10. **LEASE-011**: `PATCH /api/v1/occupancies/{occupancyId}/status` — Record move-out/deactivate occupancy (`APARTMENT_MANAGER`, `SYSTEM_ADMINISTRATOR`)
-11. **LEASE-012**: `GET /api/v1/units/{unitId}/active-occupancy` — Query active occupancy for unit (`APARTMENT_MANAGER`, `SYSTEM_ADMINISTRATOR`, authorized owner/resident, billing-payment-service)
+11. **LEASE-012**: `GET /api/v1/units/{unitId}/active-occupancy` — Query active occupancy for unit (`APARTMENT_MANAGER`, `SYSTEM_ADMINISTRATOR`, authorized owner/resident)
 
 ### Internal Service Provider Endpoints (Service JWT)
 12. **LEASE-INT-001**: `GET /api/v1/internal/units/{unitId}/occupancy` — Authoritative occupancy state for unit
@@ -36,9 +36,8 @@ Follows the canonical architecture defined in `LEASE-OCCUPANCY-SERVICE.md`, `PRO
 Copy [.env.example](.env.example) to `.env` (gitignored) for Docker Compose and fill in real
 values. For a direct Maven run, export the same variables in your shell; Spring Boot does not
 load `.env` automatically. Every service and internal endpoint requires a
-valid Gateway-issued JWT; without `GATEWAY_JWT_PUBLIC_KEY` set, the service generates an
-ephemeral dev keypair at boot and will reject every real Gateway-signed token (a clear warning
-is logged when this happens).
+valid Gateway-issued JWT. Startup fails if `GATEWAY_JWT_PUBLIC_KEY` or
+`SERVICE_JWT_PRIVATE_KEY` is missing. Configure both through deployment secrets.
 
 ## Running locally
 
@@ -47,7 +46,7 @@ is logged when this happens).
 ```
 
 The service starts on **port 8084** (`http://localhost:8084/api/v1`). It expects a MySQL
-instance (see `DB_*` env vars, defaults to `localhost:3308/lease_db`) and, for real requests,
+instance (see `DB_*` env vars, defaults to `localhost:3308/lease_occupancy_db`) and, for real requests,
 a reachable Gateway whose public key is configured.
 
 ## Running tests
@@ -67,7 +66,7 @@ From the parent `Backend` directory in PowerShell:
 docker compose -f .\lease-occupancy-service\docker-compose.yml up -d --build
 docker compose -f .\lease-occupancy-service\docker-compose.yml ps
 Invoke-RestMethod http://localhost:8084/actuator/health
-docker compose -f .\lease-occupancy-service\docker-compose.yml exec lease_db mysql -ulease_service -please_password lease_db -e "SHOW TABLES; SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
+docker compose -f .\lease-occupancy-service\docker-compose.yml exec lease_db mysql -u lease_service -p lease_occupancy_db
 ```
 
 Compose starts this service on port 8084 and its dedicated MySQL database on host port 3308.
@@ -80,23 +79,23 @@ The property service exposes UUID unit IDs through its API. This service calls i
 `/api/v1/internal/units/{unitId}/validate` endpoint for unit state and capacity and
 `/api/v1/internal/units/{unitId}/ownership` for current ownership. The fixed property contract
 has no unit status update route, so lease activation and closure do not change property status.
-Owner access to unit lease history is denied until Resident Management's `RES-INT-002`
+Owner access to unit lease history returns dependency unavailable until Resident Management's `RES-INT-002`
 response defines how a JWT user ID maps to its resident profile IDs. Manager access remains available.
 Register a physical occupancy after activating its lease;
-residency validation checks those occupancy records against a currently effective lease.
+occupancy validation checks physical occupant records against a currently effective lease.
 Lease status changes keep an actor, reason, and timestamp in `lease_status_history`.
 Future leases remain drafts or pending activation until their start date; activation is
 accepted only during the agreed period.
 
 ## Integration limits
 
-The local automated suite uses H2 and mock HTTP responses. On 2026-09-30, both Group 2
-services started against clean MySQL 8 databases, applied their Flyway migrations, and
-returned healthy actuator responses. Before release, run authenticated requests through
-the Gateway and verify JWT roles and status changes end to end. The maintenance relocation and billing notification workflow
-still needs agreed Group 3/4 contracts. If a remote unit status update succeeds but the
-lease database transaction later fails, reconcile the two services before retrying; there
-is no distributed transaction coordinator.
+The local automated suite uses H2 and mock HTTP responses. A local MySQL 8 smoke check
+applied Flyway migrations V1–V3 and returned healthy actuator and OpenAPI responses; live
+cross-service integration remains unverified. Before release, run authenticated requests through
+the Gateway and verify JWT roles and status changes end to end. The Resident Management
+relationship response contract is needed to enable owner/resident scope and map user IDs
+to resident IDs. The service contract does not define a maintenance relocation or billing
+notification workflow, so neither is part of this service's v1 domain API.
 
 ## Status
 

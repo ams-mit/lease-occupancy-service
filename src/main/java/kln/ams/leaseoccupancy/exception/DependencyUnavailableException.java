@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
 
 /**
  * Raised when a downstream service (identity-access-service, property-unit-service, ...)
- * cannot be reached or times out. Per API-STANDARD-v1 §28, this must never be swallowed
+ * cannot be reached or times out. Per PROJECT-A-GLOBAL-API-STANDARD §28, this must never be swallowed
  * into a misleading success response — it always surfaces as 503.
  */
 public class DependencyUnavailableException extends BusinessException {

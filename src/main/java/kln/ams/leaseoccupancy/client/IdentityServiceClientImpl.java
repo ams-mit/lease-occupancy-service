@@ -1,6 +1,7 @@
 package kln.ams.leaseoccupancy.client;
 
 import kln.ams.leaseoccupancy.config.JwtService;
+import kln.ams.leaseoccupancy.config.RequestContext;
 import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,10 +35,12 @@ public class IdentityServiceClientImpl implements IdentityServiceClient {
             ValidationEnvelope envelope = restClient.get()
                     .uri("/api/v1/internal/users/{userId}/validate", userId)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken)
+                    .header("X-Request-ID", RequestContext.getRequestId())
                     .retrieve()
                     .body(ValidationEnvelope.class);
 
-            if (envelope == null || envelope.data() == null) {
+            if (envelope == null || !envelope.success() || envelope.data() == null
+                    || !userId.equals(envelope.data().userId())) {
                 throw new DependencyUnavailableException(SERVICE_NAME, null);
             }
             return envelope.data();
@@ -46,7 +49,7 @@ public class IdentityServiceClientImpl implements IdentityServiceClient {
         }
     }
 
-    /** Mirrors the shared success envelope's shape for this one endpoint (API-STANDARD-v1 §27). */
+    /** Mirrors the shared success envelope's shape for this one endpoint (PROJECT-A-GLOBAL-API-STANDARD §27). */
     private record ValidationEnvelope(boolean success, IdentityUserValidation data) {
     }
 }
