@@ -5,6 +5,7 @@ import kln.ams.leaseoccupancy.config.RequestContext;
 import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
 import kln.ams.leaseoccupancy.exception.UnitNotFoundException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
@@ -34,6 +35,13 @@ public class PropertyUnitServiceClientImpl implements PropertyUnitServiceClient 
     @Override
     public UnitDetailsResponse getUnitDetails(UUID unitId) {
         UnitValidation unit = validate(unitId);
+        Set<UUID> ownerIds = getOwnerIds(unitId);
+        UUID ownerId = ownerIds.size() == 1 ? ownerIds.iterator().next() : null;
+        return new UnitDetailsResponse(unit.unitId(), unit.status(), unit.capacity(), ownerId, unit.availability());
+    }
+
+    @Override
+    public Set<UUID> getOwnerIds(UUID unitId) {
         try {
             OwnershipEnvelope ownership = restClient.get()
                     .uri("/api/v1/internal/units/{unitId}/ownership", unitId)
@@ -44,9 +52,10 @@ public class PropertyUnitServiceClientImpl implements PropertyUnitServiceClient 
                     || !unitId.equals(ownership.data().unitId()) || ownership.data().owners() == null) {
                 throw new DependencyUnavailableException(SERVICE_NAME, null);
             }
-            UUID ownerId = ownership.data().owners().size() == 1
-                    ? ownership.data().owners().get(0).ownerId() : null;
-            return new UnitDetailsResponse(unit.unitId(), unit.status(), unit.capacity(), ownerId);
+            if (ownership.data().owners().stream().anyMatch(owner -> owner.ownerId() == null)) {
+                throw new DependencyUnavailableException(SERVICE_NAME, null);
+            }
+            return ownership.data().owners().stream().map(Owner::ownerId).collect(java.util.stream.Collectors.toUnmodifiableSet());
         } catch (HttpClientErrorException.NotFound ex) {
             throw new UnitNotFoundException(unitId);
         } catch (RestClientException ex) {
@@ -63,7 +72,8 @@ public class PropertyUnitServiceClientImpl implements PropertyUnitServiceClient 
                     .retrieve().body(ValidationEnvelope.class);
             if (envelope == null || !envelope.success() || envelope.data() == null
                     || !unitId.equals(envelope.data().unitId()) || !envelope.data().exists()
-                    || envelope.data().status() == null || envelope.data().capacity() == null
+                    || envelope.data().status() == null || envelope.data().availability() == null
+                    || envelope.data().capacity() == null
                     || envelope.data().capacity() <= 0) {
                 throw new DependencyUnavailableException(SERVICE_NAME, null);
             }
@@ -76,7 +86,7 @@ public class PropertyUnitServiceClientImpl implements PropertyUnitServiceClient 
     }
 
     private record ValidationEnvelope(boolean success, UnitValidation data) {}
-    private record UnitValidation(UUID unitId, boolean exists, String status, Integer capacity) {}
+    private record UnitValidation(UUID unitId, boolean exists, String status, Boolean availability, Integer capacity) {}
     private record OwnershipEnvelope(boolean success, UnitOwnership data) {}
     private record UnitOwnership(UUID unitId, List<Owner> owners) {}
     private record Owner(UUID ownerId) {}

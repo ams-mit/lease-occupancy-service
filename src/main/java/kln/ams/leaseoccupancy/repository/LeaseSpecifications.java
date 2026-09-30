@@ -40,7 +40,10 @@ public final class LeaseSpecifications {
     }
 
     public static Specification<Lease> unitIdIn(Collection<UUID> unitIds) {
-        if (unitIds == null || unitIds.isEmpty()) {
+        if (unitIds == null) {
+            return null;
+        }
+        if (unitIds.isEmpty()) {
             return (root, query, cb) -> cb.disjunction();
         }
         return (root, query, cb) -> root.get("unitId").in(unitIds);

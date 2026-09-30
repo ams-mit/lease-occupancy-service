@@ -70,6 +70,7 @@ public final class TestJwtTokens {
     public static String expiredUserToken(String userId, String... roles) {
         Instant past = Instant.now().minusSeconds(3600);
         var builder = Jwts.builder()
+                .header().type("JWT").and()
                 .subject(userId)
                 .claim("type", "user")
                 .claim("roles", List.of(roles))
@@ -81,6 +82,7 @@ public final class TestJwtTokens {
     private static String token(String subject, String type, List<String> roles, long ttlSeconds) {
         Instant now = Instant.now();
         var builder = Jwts.builder()
+                .header().type("JWT").and()
                 .subject(subject)
                 .claim("type", type)
                 .issuedAt(Date.from(now))

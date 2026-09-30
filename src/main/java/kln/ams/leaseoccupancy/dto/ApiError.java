@@ -3,7 +3,7 @@ package kln.ams.leaseoccupancy.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
-/** Error body nested in {@link ApiResponse} (API-STANDARD-v1 §15, §16). */
+/** Error body nested in {@link ApiResponse} (PROJECT-A-GLOBAL-API-STANDARD §15, §16). */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ApiError(String code, Object details) {
 

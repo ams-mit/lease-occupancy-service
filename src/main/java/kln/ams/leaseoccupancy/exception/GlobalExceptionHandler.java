@@ -4,6 +4,7 @@ import kln.ams.leaseoccupancy.config.RequestContext;
 import kln.ams.leaseoccupancy.dto.ApiError;
 import kln.ams.leaseoccupancy.dto.ApiResponse;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
- * Centralizes error handling so every controller returns the same envelope (API-STANDARD-v1
+ * Centralizes error handling so every controller returns the same envelope (PROJECT-A-GLOBAL-API-STANDARD
  * §15, §16) instead of leaking framework default error bodies or stack traces.
  */
 @RestControllerAdvice
@@ -26,7 +27,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
         log.warn("Business error [{}]: {}", ex.getErrorCode(), ex.getMessage());
-        ApiError error = ApiError.of(ex.getErrorCode());
+        ApiError error = ex instanceof DependencyUnavailableException dependency
+                ? new ApiError(ex.getErrorCode(), Map.of("service", dependency.getServiceName()))
+                : ApiError.of(ex.getErrorCode());
         return ResponseEntity.status(ex.getHttpStatus())
                 .body(ApiResponse.error(ex.getMessage(), error, RequestContext.getRequestId()));
     }

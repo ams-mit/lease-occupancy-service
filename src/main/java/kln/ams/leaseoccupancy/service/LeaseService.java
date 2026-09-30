@@ -1,7 +1,6 @@
 package kln.ams.leaseoccupancy.service;
 
-import kln.ams.leaseoccupancy.client.IdentityServiceClient;
-import kln.ams.leaseoccupancy.client.IdentityUserValidation;
+import kln.ams.leaseoccupancy.client.ResidentServiceClient;
 import kln.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import kln.ams.leaseoccupancy.client.UnitCapacityResponse;
 import kln.ams.leaseoccupancy.client.UnitDetailsResponse;
@@ -22,14 +21,20 @@ import kln.ams.leaseoccupancy.exception.InvalidTenantException;
 import kln.ams.leaseoccupancy.exception.LeaseConflictException;
 import kln.ams.leaseoccupancy.exception.LeaseNotFoundException;
 import kln.ams.leaseoccupancy.exception.UnitUnderMaintenanceException;
+import kln.ams.leaseoccupancy.exception.UnitNotEligibleException;
+import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
 import kln.ams.leaseoccupancy.repository.LeaseRepository;
 import kln.ams.leaseoccupancy.repository.LeaseSpecifications;
 import kln.ams.leaseoccupancy.repository.LeaseStatusHistoryRepository;
 import kln.ams.leaseoccupancy.repository.OccupancyRepository;
+import kln.ams.leaseoccupancy.repository.OccupancyStatusHistoryRepository;
+import kln.ams.leaseoccupancy.entity.OccupancyStatusHistory;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -44,25 +49,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class LeaseService {
 
     private final LeaseRepository leaseRepository;
-    private final IdentityServiceClient identityServiceClient;
+    private final ResidentServiceClient residents;
     private final PropertyUnitServiceClient propertyUnitServiceClient;
     private final UnitLockService unitLockService;
     private final OccupancyRepository occupancyRepository;
     private final LeaseStatusHistoryRepository statusHistory;
+    private final OccupancyStatusHistoryRepository occupancyStatusHistory;
 
     public LeaseService(
             LeaseRepository leaseRepository,
-            IdentityServiceClient identityServiceClient,
+            ResidentServiceClient residents,
             PropertyUnitServiceClient propertyUnitServiceClient,
             UnitLockService unitLockService,
             OccupancyRepository occupancyRepository,
-            LeaseStatusHistoryRepository statusHistory) {
+            LeaseStatusHistoryRepository statusHistory,
+            OccupancyStatusHistoryRepository occupancyStatusHistory) {
         this.leaseRepository = leaseRepository;
-        this.identityServiceClient = identityServiceClient;
+        this.residents = residents;
         this.propertyUnitServiceClient = propertyUnitServiceClient;
         this.unitLockService = unitLockService;
         this.occupancyRepository = occupancyRepository;
         this.statusHistory = statusHistory;
+        this.occupancyStatusHistory = occupancyStatusHistory;
     }
 
     @Transactional
@@ -75,15 +83,18 @@ public class LeaseService {
             throw new InvalidLeaseDatesException("At least one occupant/responsible party is required");
         }
 
-        // Validate unit existence and capacity/overlap with property service
+        UnitDetailsResponse unit = propertyUnitServiceClient.getUnitDetails(request.unitId());
+        if (unit == null) throw new DependencyUnavailableException("property-unit-service", null);
+        if (unit.isUnderMaintenance()) throw new UnitUnderMaintenanceException(request.unitId());
+        if (!unit.isEligibleForNewOccupancy()) throw new UnitNotEligibleException(request.unitId());
+
+        // Validate unit capacity and overlap with property service
         validateUnitCapacityAndOverlap(request.unitId(), request.startDate(), request.endDate(), null);
 
-        // Validate all referenced occupants with identity service
+        // Occupant IDs are Resident Management profile IDs, not Identity Access user IDs.
         for (LeaseCreateRequest.OccupantInput occupantInput : request.occupants()) {
-            IdentityUserValidation validation = identityServiceClient.validateUser(occupantInput.residentId());
-            if (!validation.isValidTenant()) {
+            if (!residents.isValidResident(occupantInput.residentId()))
                 throw new InvalidTenantException(occupantInput.residentId());
-            }
         }
 
         UUID primaryTenantId = request.occupants().get(0).residentId();
@@ -110,7 +121,7 @@ public class LeaseService {
     public Page<Lease> listLeases(
             UUID unitId,
             UUID residentId,
-            Collection<UUID> ownerUnitIds,
+            UUID ownerId,
             LeaseStatus status,
             LocalDate startDate,
             LocalDate endDate,
@@ -119,10 +130,17 @@ public class LeaseService {
         Specification<Lease> spec = Specification
                 .where(LeaseSpecifications.hasUnitId(unitId))
                 .and(LeaseSpecifications.hasTenantOrOccupantId(residentId))
-                .and(LeaseSpecifications.unitIdIn(ownerUnitIds))
                 .and(LeaseSpecifications.hasStatus(status))
                 .and(LeaseSpecifications.startDateOnOrAfter(startDate))
                 .and(LeaseSpecifications.endDateOnOrBefore(endDate));
+
+        if (ownerId != null) {
+            Set<UUID> matchingUnits = leaseRepository.findAll(spec).stream()
+                    .map(Lease::getUnitId).distinct()
+                    .filter(candidate -> propertyUnitServiceClient.getOwnerIds(candidate).contains(ownerId))
+                    .collect(Collectors.toSet());
+            spec = spec.and(LeaseSpecifications.unitIdIn(matchingUnits));
+        }
 
         return leaseRepository.findAll(spec, pageable);
     }
@@ -169,20 +187,13 @@ public class LeaseService {
             }
 
             UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(lease.getUnitId());
-            if (unitDetails != null && unitDetails.isUnderMaintenance()) {
-                throw new UnitUnderMaintenanceException(lease.getUnitId());
-            }
-
-            IdentityUserValidation tenant = identityServiceClient.validateUser(lease.getTenantId());
-            if (!tenant.isValidTenant()) {
-                throw new InvalidTenantException(lease.getTenantId());
-            }
+            if (unitDetails == null) throw new DependencyUnavailableException("property-unit-service", null);
+            if (unitDetails.isUnderMaintenance()) throw new UnitUnderMaintenanceException(lease.getUnitId());
+            if (!unitDetails.isEligibleForNewOccupancy()) throw new UnitNotEligibleException(lease.getUnitId());
 
             for (Occupant occupant : lease.getOccupants()) {
-                IdentityUserValidation val = identityServiceClient.validateUser(occupant.getResidentId());
-                if (!val.isValidTenant()) {
+                if (!residents.isValidResident(occupant.getResidentId()))
                     throw new InvalidTenantException(occupant.getResidentId());
-                }
             }
 
             validateUnitCapacityAndOverlap(lease.getUnitId(), lease.getStartDate(), lease.getEndDate(), lease.getId());
@@ -203,6 +214,13 @@ public class LeaseService {
                 occupancy.setStatus(OccupancyStatus.ENDED);
                 occupancy.setMoveOutDate(LocalDate.now());
                 occupancyRepository.save(occupancy);
+                OccupancyStatusHistory entry = new OccupancyStatusHistory();
+                entry.setOccupancyId(occupancy.getId());
+                entry.setFromStatus(OccupancyStatus.ACTIVE);
+                entry.setToStatus(OccupancyStatus.ENDED);
+                entry.setChangedBy(AuthContext.subjectOrSystem());
+                entry.setReason("Lease " + target + ": " + request.reason());
+                occupancyStatusHistory.save(entry);
             }
         }
         return saved;
@@ -231,14 +249,21 @@ public class LeaseService {
                 .findByUnitIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
                         unitId, LeaseStatus.ACTIVE, today, today);
 
-        if (activeLeases.isEmpty()) {
+        List<Occupancy> activeOccupancies = occupancyRepository.findByUnitIdAndStatus(unitId, OccupancyStatus.ACTIVE)
+                .stream().filter(occ -> !occ.getMoveInDate().isAfter(today)
+                        && (occ.getMoveOutDate() == null || !occ.getMoveOutDate().isBefore(today)))
+                .toList();
+        if (activeLeases.isEmpty() || activeOccupancies.isEmpty()) {
             return ActiveOccupancyResponse.inactive(unitId);
         }
 
-        Lease activeLease = activeLeases.get(0);
-        List<Occupancy> activeOccupancies = occupancyRepository.findByUnitIdAndStatus(unitId, OccupancyStatus.ACTIVE);
+        Lease activeLease = activeLeases.stream()
+                .filter(lease -> activeOccupancies.stream().anyMatch(occ -> lease.getId().equals(occ.getLeaseId())))
+                .findFirst().orElse(null);
+        if (activeLease == null) return ActiveOccupancyResponse.inactive(unitId);
 
         List<ActiveOccupancyResponse.OccupantSummary> occupants = activeOccupancies.stream()
+                .filter(occ -> activeLease.getId().equals(occ.getLeaseId()))
                 .map(occ -> new ActiveOccupancyResponse.OccupantSummary(occ.getResidentId(), occ.getStatus()))
                 .toList();
 

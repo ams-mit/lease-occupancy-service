@@ -71,6 +71,16 @@ class PropertyUnitServiceClientTest {
         server.verify();
     }
 
+    @Test void ownerIdsIncludeEverySharedOwner() {
+        UUID id = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID();
+        Mockito.when(jwtService.mintServiceToken()).thenReturn("service-token");
+        server.expect(requestTo("http://gateway.test/api/v1/internal/units/" + id + "/ownership"))
+                .andRespond(withSuccess("{\"success\":true,\"data\":{\"unitId\":\"" + id
+                        + "\",\"owners\":[{\"ownerId\":\"" + first + "\"},{\"ownerId\":\"" + second + "\"}]}}", MediaType.APPLICATION_JSON));
+        assertThat(client.getOwnerIds(id)).containsExactlyInAnyOrder(first, second);
+        server.verify();
+    }
+
     @Test void missingUnitIsNotFound() {
         UUID id = UUID.randomUUID();
         Mockito.when(jwtService.mintServiceToken()).thenReturn("service-token");
@@ -92,7 +102,7 @@ class PropertyUnitServiceClientTest {
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer service-token"))
                 .andRespond(withSuccess("{\"success\":true,\"data\":{\"unitId\":\"" + id
-                        + "\",\"exists\":true,\"status\":\"AVAILABLE\",\"capacity\":" + capacity + "}}",
+                        + "\",\"exists\":true,\"status\":\"AVAILABLE\",\"availability\":true,\"capacity\":" + capacity + "}}",
                         MediaType.APPLICATION_JSON));
     }
 }

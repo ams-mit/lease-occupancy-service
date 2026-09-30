@@ -14,6 +14,8 @@ import kln.ams.leaseoccupancy.entity.Lease;
 import kln.ams.leaseoccupancy.entity.LeaseStatus;
 import kln.ams.leaseoccupancy.entity.LeaseStatusHistory;
 import kln.ams.leaseoccupancy.exception.ForbiddenException;
+import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
+import kln.ams.leaseoccupancy.exception.InvalidRequestException;
 import kln.ams.leaseoccupancy.service.LeaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -60,7 +62,7 @@ public class LeaseController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Create a lease", description = "Creates a lease in a non-active or valid initial state.")
+    @Operation(operationId = "LEASE-001", summary = "Create a lease", description = "Management only. Validates unit and residents through provider APIs. Dependency failure: 503 DEPENDENCY_UNAVAILABLE.")
     public ApiResponse<LeaseResponse> createLease(@Valid @RequestBody LeaseCreateRequest request) {
         AuthContext.requireManagement();
         Lease lease = leaseService.createLease(request);
@@ -72,7 +74,7 @@ public class LeaseController {
      * Roles: APARTMENT_MANAGER, SYSTEM_ADMINISTRATOR, OWNER, TENANT_RESIDENT.
      */
     @GetMapping
-    @Operation(summary = "Search/list leases", description = "Filtered and scoped by caller role and parameters.")
+    @Operation(operationId = "LEASE-002", summary = "Search/list leases", description = "Management or authorized owner/resident. Filters: unitId, residentId, ownerId, status, startDate, endDate; page defaults to 0, size to 20.")
     public ApiResponse<List<LeaseResponse>> listLeases(
             @RequestParam(required = false) UUID unitId,
             @RequestParam(required = false) UUID residentId,
@@ -88,41 +90,23 @@ public class LeaseController {
             throw new ForbiddenException("User authentication required");
         }
 
-        boolean isMgmt = AuthContext.isManagement(caller);
-        boolean isOwner = caller.roles().contains("OWNER");
-        boolean isTenant = caller.roles().contains("TENANT_RESIDENT");
-
-        if (!isMgmt && !isOwner && !isTenant) {
-            throw new ForbiddenException("Caller role is not authorized to list leases");
-        }
-
-        UUID effectiveResidentId = residentId;
-        Collection<UUID> ownerUnitIds = null;
-
-        if (!isMgmt) {
-            UUID callerUserId = UUID.fromString(caller.sub());
-            if (isTenant && !isOwner) {
-                // Ordinary tenant can only retrieve their own leases
-                effectiveResidentId = callerUserId;
-            } else if (isOwner && !isTenant) {
-                // Owner can only retrieve leases for units they own
-                if (unitId != null) {
-                    UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(unitId);
-                    if (unitDetails == null || !callerUserId.equals(unitDetails.ownerId())) {
-                        throw new ForbiddenException("Caller is not the authorized owner of unit " + unitId);
-                    }
-                }
+        if (!AuthContext.isManagement(caller)) {
+            if (caller.roles().contains("OWNER") || caller.roles().contains("TENANT_RESIDENT")) {
+                throw new DependencyUnavailableException("resident-management-service", null);
             }
+            throw new ForbiddenException("Resident or owner scope requires the Resident Management relationship contract");
         }
-
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("page must be nonnegative and size must be between 1 and 100");
+        }
         Page<Lease> result = leaseService.listLeases(
                 unitId,
-                effectiveResidentId,
-                ownerUnitIds,
+                residentId,
+                ownerId,
                 status,
                 startDate,
                 endDate,
-                PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE)));
+                PageRequest.of(page, size));
 
         List<LeaseResponse> data = result.map(LeaseResponse::from).getContent();
         return ApiResponse.successPage("Leases retrieved successfully", data, PaginationMeta.from(result), RequestContext.getRequestId());
@@ -133,7 +117,7 @@ public class LeaseController {
      * Allowed: Management, authorized owner of unit, or authorized tenant/occupant of lease.
      */
     @GetMapping("/{leaseId}")
-    @Operation(summary = "Get a lease by ID")
+    @Operation(operationId = "LEASE-003", summary = "Get a lease by ID")
     public ApiResponse<LeaseResponse> getLease(@PathVariable UUID leaseId) {
         AuthContext.Principal caller = AuthContext.current();
         Lease lease = leaseService.getLease(leaseId);
@@ -146,7 +130,7 @@ public class LeaseController {
      * Allowed: Same scope as lease detail.
      */
     @GetMapping("/{leaseId}/history")
-    @Operation(summary = "Get lease status history")
+    @Operation(operationId = "LEASE-004", summary = "Get lease status history")
     public ApiResponse<LeaseHistoryResponse> statusHistory(@PathVariable UUID leaseId) {
         AuthContext.Principal caller = AuthContext.current();
         Lease lease = leaseService.getLease(leaseId);
@@ -161,14 +145,14 @@ public class LeaseController {
      * Allowed: APARTMENT_MANAGER, SYSTEM_ADMINISTRATOR, or authorized owner of unit.
      */
     @GetMapping("/units/{unitId}")
-    @Operation(summary = "Get lease history for a unit")
+    @Operation(operationId = "LEASE-005", summary = "Get lease history for a unit")
     public ApiResponse<List<LeaseResponse>> historyForUnit(@PathVariable UUID unitId) {
         AuthContext.Principal caller = AuthContext.current();
         if (!AuthContext.isManagement(caller)) {
-            UnitDetailsResponse unit = propertyUnitServiceClient.getUnitDetails(unitId);
-            if (unit == null || unit.ownerId() == null || !unit.ownerId().toString().equals(caller.sub())) {
-                throw new ForbiddenException("Caller is not authorized to view unit lease history");
+            if (caller.isUser() && caller.roles().contains("OWNER")) {
+                throw new DependencyUnavailableException("resident-management-service", null);
             }
+            throw new ForbiddenException("Owner scope requires the Resident Management relationship contract");
         }
 
         List<LeaseResponse> data = leaseService.historyForUnit(unitId).stream()
@@ -183,7 +167,7 @@ public class LeaseController {
      * Allowed roles: APARTMENT_MANAGER, SYSTEM_ADMINISTRATOR.
      */
     @PatchMapping("/{leaseId}/status")
-    @Operation(summary = "Change lease status", description = "Enforces state machine and activation prerequisites.")
+    @Operation(operationId = "LEASE-006", summary = "Change lease status", description = "Management only. Enforces state machine and activation prerequisites.")
     public ApiResponse<LeaseResponse> updateStatus(
             @PathVariable UUID leaseId, @Valid @RequestBody LeaseStatusUpdateRequest request) {
 
@@ -200,19 +184,9 @@ public class LeaseController {
             return;
         }
 
-        String callerId = caller.sub();
-        boolean isParty = lease.getTenantId().toString().equals(callerId)
-                || lease.getOccupants().stream().anyMatch(o -> o.getResidentId().toString().equals(callerId));
-
-        if (isParty) {
-            return;
+        if (caller.roles().contains("OWNER") || caller.roles().contains("TENANT_RESIDENT")) {
+            throw new DependencyUnavailableException("resident-management-service", null);
         }
-
-        UnitDetailsResponse unitDetails = propertyUnitServiceClient.getUnitDetails(lease.getUnitId());
-        if (unitDetails != null && unitDetails.ownerId() != null && unitDetails.ownerId().toString().equals(callerId)) {
-            return;
-        }
-
-        throw new ForbiddenException("Caller is not authorized to view this lease");
+        throw new ForbiddenException("Caller role is not allowed to view this lease");
     }
 }

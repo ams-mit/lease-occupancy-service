@@ -1,6 +1,6 @@
 package kln.ams.leaseoccupancy.service;
 
-import kln.ams.leaseoccupancy.client.IdentityServiceClient;
+import kln.ams.leaseoccupancy.client.ResidentServiceClient;
 import kln.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import kln.ams.leaseoccupancy.client.UnitDetailsResponse;
 import kln.ams.leaseoccupancy.config.AuthContext;
@@ -18,6 +18,8 @@ import kln.ams.leaseoccupancy.exception.LeaseNotFoundException;
 import kln.ams.leaseoccupancy.exception.OccupancyNotFoundException;
 import kln.ams.leaseoccupancy.exception.OccupancyRuleException;
 import kln.ams.leaseoccupancy.exception.OccupancyStatusTransitionException;
+import kln.ams.leaseoccupancy.exception.UnitNotEligibleException;
+import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
 import kln.ams.leaseoccupancy.repository.LeaseRepository;
 import kln.ams.leaseoccupancy.repository.OccupancyRepository;
 import kln.ams.leaseoccupancy.repository.OccupancyStatusHistoryRepository;
@@ -38,7 +40,7 @@ public class OccupancyService {
 
     private final OccupancyRepository occupancies;
     private final LeaseRepository leases;
-    private final IdentityServiceClient identity;
+    private final ResidentServiceClient residents;
     private final PropertyUnitServiceClient property;
     private final UnitLockService locks;
     private final OccupancyStatusHistoryRepository statusHistory;
@@ -46,13 +48,13 @@ public class OccupancyService {
     public OccupancyService(
             OccupancyRepository occupancies,
             LeaseRepository leases,
-            IdentityServiceClient identity,
+            ResidentServiceClient residents,
             PropertyUnitServiceClient property,
             UnitLockService locks,
             OccupancyStatusHistoryRepository statusHistory) {
         this.occupancies = occupancies;
         this.leases = leases;
-        this.identity = identity;
+        this.residents = residents;
         this.property = property;
         this.locks = locks;
         this.statusHistory = statusHistory;
@@ -66,9 +68,8 @@ public class OccupancyService {
         locks.acquireUnitLock(request.unitId());
 
         UnitDetailsResponse unit = property.getUnitDetails(request.unitId());
-        if (unit != null && unit.isUnderMaintenance()) {
-            throw new OccupancyRuleException("Unit is under maintenance");
-        }
+        if (unit == null) throw new DependencyUnavailableException("property-unit-service", null);
+        if (!unit.isEligibleForMoveInUnderActiveLease()) throw new UnitNotEligibleException(request.unitId());
 
         Lease lease = leases.findById(request.leaseId())
                 .orElseThrow(() -> new LeaseNotFoundException(request.leaseId()));
@@ -85,6 +86,9 @@ public class OccupancyService {
             throw new OccupancyRuleException("Occupancy start date must be within active lease period ["
                     + lease.getStartDate() + " to " + lease.getEndDate() + "]");
         }
+        if (request.startDate().isAfter(LocalDate.now())) {
+            throw new OccupancyRuleException("A physical move-in cannot be recorded for a future date");
+        }
 
         boolean permitted = lease.getTenantId().equals(request.residentId())
                 || lease.getOccupants().stream().map(Occupant::getResidentId).anyMatch(request.residentId()::equals);
@@ -93,9 +97,8 @@ public class OccupancyService {
             throw new OccupancyRuleException("Resident is not a permitted occupant of this lease");
         }
 
-        if (!identity.validateUser(request.residentId()).isValidTenant()) {
+        if (!residents.isValidResident(request.residentId()))
             throw new InvalidTenantException(request.residentId());
-        }
 
         if (occupancies.existsByUnitIdAndResidentIdAndStatus(request.unitId(), request.residentId(), OccupancyStatus.ACTIVE)) {
             throw new OccupancyRuleException("Resident already has an active occupancy in this unit");
@@ -158,6 +161,10 @@ public class OccupancyService {
         OccupancyStatus current = occupancy.getStatus();
         OccupancyStatus target = request.status();
         assertValidTransition(current, target);
+
+        if (target == OccupancyStatus.ENDED && request.effectiveDate().isBefore(occupancy.getMoveInDate())) {
+            throw new OccupancyRuleException("Move-out date cannot be before move-in date");
+        }
 
         occupancy.setStatus(target);
         if (target == OccupancyStatus.ENDED) {

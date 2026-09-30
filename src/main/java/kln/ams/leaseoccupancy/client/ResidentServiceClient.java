@@ -29,10 +29,14 @@ public class ResidentServiceClient {
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtService.mintServiceToken())
                     .header("X-Request-ID", RequestContext.getRequestId())
                     .retrieve().body(JsonNode.class);
-            if (body == null || !body.path("success").asBoolean(false) || body.path("data").isMissingNode()
-                    || body.path("data").isNull() || body.path("data").isBoolean() && !body.path("data").asBoolean()
-                    || body.path("data").path("valid").isBoolean() && !body.path("data").path("valid").asBoolean()
-                    || body.path("data").path("exists").isBoolean() && !body.path("data").path("exists").asBoolean()) {
+            JsonNode data = body == null ? null : body.path("data");
+            boolean positive = data != null && (data.isBoolean() && data.asBoolean()
+                    || data.path("valid").isBoolean() && data.path("valid").asBoolean()
+                    || data.path("exists").isBoolean() && data.path("exists").asBoolean());
+            boolean sameId = data != null && (!data.hasNonNull("residentId")
+                    || residentId.toString().equals(data.path("residentId").asText()));
+            if (body == null || !body.path("success").asBoolean(false) || !positive || !sameId
+                    || data.path("active").isBoolean() && !data.path("active").asBoolean()) {
                 throw new DependencyUnavailableException("resident-management-service", null);
             }
         } catch (HttpClientErrorException.NotFound ex) {
@@ -40,5 +44,10 @@ public class ResidentServiceClient {
         } catch (RestClientException ex) {
             throw new DependencyUnavailableException("resident-management-service", ex);
         }
+    }
+
+    public boolean isValidResident(UUID residentId) {
+        requireResident(residentId);
+        return true;
     }
 }

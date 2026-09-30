@@ -1,36 +1,7 @@
-# lease-occupancy-service Postman Collection
+# Lease Occupancy Postman collection
 
-This directory contains the Postman collection for the `lease-occupancy-service`.
+`lease-occupancy-service.postman_collection.json` contains the 11 public and 3 internal canonical v1 domain APIs. It uses the API Gateway at `http://localhost:8080/api/v1` by default.
 
-## Included Endpoints
-The collection covers all implemented endpoints across Sprint 1 and Sprint 2:
-* **A. Contractual Leases:** `POST /leases`, `GET /leases`, `GET /leases/{leaseId}`, `GET /leases/{leaseId}/history`, `GET /leases/units/{unitId}`, `PATCH /leases/{leaseId}/status`, `GET /leases/validate`
-* **B. Unit Occupancy:** `POST /occupancies`, `GET /occupancies/units/{unitId}`, `GET /occupancies/residents/{residentId}`, `PATCH /occupancies/{occupancyId}/status`, `GET /units/{unitId}/active-occupancy`
-* **C. Internal Service-to-Service:** `GET /internal/occupancies/active-billing`, `GET /internal/occupancies/validate`
-* **D. System Operations:** `/actuator/health`, `/actuator/info`
+Set `user_jwt` to an Identity Access user token for public calls and `service_jwt` to a token signed by an allowed calling service for internal calls. Set the UUID variables to records in the integrated environment. Every request includes `X-Request-ID`; the collection checks the HTTP status, success envelope, and propagated request ID.
 
-## Setup Instructions
-
-1. **Import the Collection:** Open Postman, click "Import", and select the `lease-occupancy-service.postman_collection.json` file.
-2. **Environment Variables:** The collection relies on the following collection variables:
-    * `base_url`: Defaults to `http://localhost:8084/api/v1`.
-    * `jwt_token`: Leave empty in the collection variables, but you must set this in your active environment for authenticated endpoints to work.
-
-## JWT Authentication Requirements
-
-Every endpoint (except System Operations) requires a Gateway-issued JWT sent in the `Authorization: Bearer <token>` header.
-
-### 1. Public Endpoints (Contractual Leases)
-* Require a **User JWT** (`type=user`).
-* Lease and occupancy writes require `MANAGER`.
-* Lease detail and status history allow a resident party; unit lease history allows its owner.
-* Resident occupancy history is restricted to the resident or a manager.
-
-### 2. Internal Endpoints (Service-to-Service)
-* Require a **Service JWT** (`type=service`).
-* The `sub` claim must match the specific allowed caller:
-    * `/internal/occupancies/active-billing` requires `sub=billing-payment-service`.
-    * `/internal/occupancies/validate` requires `sub=operations-service`.
-
-### Generating Tokens for Local Dev
-For local development and testing, you can use the `TestJwtTokens` utility class (or an equivalent script) to generate valid JWTs signed by the test keypair. In production or integrated environments, these tokens must be issued and signed by the actual API Gateway.
+The complete roles, allowed service callers, validation rules, and error codes are in `LEASE-OCCUPANCY-SERVICE.md` and the Project A registry. Public read access for owners and residents depends on the Resident Management relationship provider contract.

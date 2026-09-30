@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,13 +15,16 @@ import kln.ams.leaseoccupancy.config.JwtService;
 import kln.ams.leaseoccupancy.config.RequestIdFilter;
 import kln.ams.leaseoccupancy.config.TestJwtTokens;
 import kln.ams.leaseoccupancy.entity.Occupancy;
+import kln.ams.leaseoccupancy.entity.OccupancyStatus;
 import kln.ams.leaseoccupancy.service.OccupancyService;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -68,21 +72,44 @@ class OccupancyControllerTest {
     }
 
     @Test
-    void unrelatedResidentCannotReadHistory() throws Exception {
+    void residentHistoryFailsClosedWithoutRelationshipProviderContract() throws Exception {
         mvc.perform(get("/api/v1/occupancies/residents/{id}", UUID.randomUUID())
                         .header(HttpHeaders.AUTHORIZATION,
                                 "Bearer " + TestJwtTokens.userToken(UUID.randomUUID().toString(), "TENANT_RESIDENT")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isServiceUnavailable());
     }
 
     @Test
-    void residentCanReadOwnHistory() throws Exception {
+    void residentSelfHistoryNeedsRelationshipProviderContract() throws Exception {
         UUID residentId = UUID.randomUUID();
-        when(service.historyForResident(residentId)).thenReturn(List.of());
         mvc.perform(get("/api/v1/occupancies/residents/{id}", residentId)
                         .header(HttpHeaders.AUTHORIZATION,
                                 "Bearer " + TestJwtTokens.userToken(residentId.toString(), "TENANT_RESIDENT")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("DEPENDENCY_UNAVAILABLE"));
+    }
+
+    @Test
+    void managerCanListUnitOccupantsAndRecordMoveOut() throws Exception {
+        UUID unitId = UUID.randomUUID();
+        Occupancy occupancy = new Occupancy();
+        occupancy.setId(UUID.randomUUID());
+        occupancy.setUnitId(unitId);
+        occupancy.setResidentId(UUID.randomUUID());
+        occupancy.setStatus(OccupancyStatus.ACTIVE);
+        when(service.listOccupantsForUnit(org.mockito.ArgumentMatchers.eq(unitId), any(),
+                org.mockito.ArgumentMatchers.eq(false), any()))
+                .thenReturn(new PageImpl<>(List.of(occupancy), PageRequest.of(0, 20), 1));
+        when(service.updateStatus(org.mockito.ArgumentMatchers.eq(occupancy.getId()), any())).thenAnswer(inv -> {
+            occupancy.setStatus(OccupancyStatus.ENDED);
+            return occupancy;
+        });
+        String token = "Bearer " + TestJwtTokens.userToken(UUID.randomUUID().toString(), "APARTMENT_MANAGER");
+        mvc.perform(get("/api/v1/occupancies/units/{id}", unitId).header(HttpHeaders.AUTHORIZATION, token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.totalElements").value(1));
+        mvc.perform(patch("/api/v1/occupancies/{id}/status", occupancy.getId())
+                        .header(HttpHeaders.AUTHORIZATION, token).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ENDED\",\"effectiveDate\":\"2026-10-01\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("ENDED"));
     }
 }

@@ -8,8 +8,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import kln.ams.leaseoccupancy.client.IdentityServiceClient;
-import kln.ams.leaseoccupancy.client.IdentityUserValidation;
+import kln.ams.leaseoccupancy.client.ResidentServiceClient;
 import kln.ams.leaseoccupancy.client.PropertyUnitServiceClient;
 import kln.ams.leaseoccupancy.client.UnitCapacityResponse;
 import kln.ams.leaseoccupancy.client.UnitDetailsResponse;
@@ -33,6 +32,7 @@ import kln.ams.leaseoccupancy.exception.UnitUnderMaintenanceException;
 import kln.ams.leaseoccupancy.repository.LeaseRepository;
 import kln.ams.leaseoccupancy.repository.LeaseStatusHistoryRepository;
 import kln.ams.leaseoccupancy.repository.OccupancyRepository;
+import kln.ams.leaseoccupancy.repository.OccupancyStatusHistoryRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -51,7 +51,7 @@ class LeaseServiceTest {
     private LeaseRepository leaseRepository;
 
     @Mock
-    private IdentityServiceClient identityServiceClient;
+    private ResidentServiceClient residents;
 
     @Mock
     private PropertyUnitServiceClient propertyUnitServiceClient;
@@ -61,6 +61,9 @@ class LeaseServiceTest {
 
     @Mock
     private OccupancyRepository occupancyRepository;
+
+    @Mock
+    private OccupancyStatusHistoryRepository occupancyStatusHistory;
 
     @Mock
     private LeaseStatusHistoryRepository statusHistory;
@@ -84,8 +87,9 @@ class LeaseServiceTest {
     @Test
     void createLease_savesAsDraft_whenTenantValidAndNoConflict() {
         LeaseCreateRequest request = new LeaseCreateRequest(unitId, startDate, endDate, List.of(new LeaseCreateRequest.OccupantInput(tenantId)), "Notes");
-        when(identityServiceClient.validateUser(tenantId))
-                .thenReturn(new IdentityUserValidation(tenantId, true, true));
+        when(propertyUnitServiceClient.getUnitDetails(unitId))
+                .thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
+        when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitCapacity(unitId))
                 .thenReturn(new UnitCapacityResponse(unitId, 1));
         when(leaseRepository.countOverlappingActiveLeases(eq(unitId), eq(startDate), eq(endDate), isNull()))
@@ -110,12 +114,12 @@ class LeaseServiceTest {
     @Test
     void createLease_rejects_whenTenantNotValid() {
         LeaseCreateRequest request = new LeaseCreateRequest(unitId, startDate, endDate, List.of(new LeaseCreateRequest.OccupantInput(tenantId)), "Notes");
+        when(propertyUnitServiceClient.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
         when(propertyUnitServiceClient.getUnitCapacity(unitId))
                 .thenReturn(new UnitCapacityResponse(unitId, 1));
         when(leaseRepository.countOverlappingActiveLeases(eq(unitId), eq(startDate), eq(endDate), isNull()))
                 .thenReturn(0L);
-        when(identityServiceClient.validateUser(tenantId))
-                .thenReturn(new IdentityUserValidation(tenantId, true, false));
+        when(residents.isValidResident(tenantId)).thenReturn(false);
 
         assertThatThrownBy(() -> leaseService.createLease(request))
                 .isInstanceOf(InvalidTenantException.class);
@@ -124,6 +128,7 @@ class LeaseServiceTest {
     @Test
     void createLease_rejects_whenUnitHasOverlappingActiveLease_capacity1() {
         LeaseCreateRequest request = new LeaseCreateRequest(unitId, startDate, endDate, List.of(new LeaseCreateRequest.OccupantInput(tenantId)), "Notes");
+        when(propertyUnitServiceClient.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
         when(propertyUnitServiceClient.getUnitCapacity(unitId))
                 .thenReturn(new UnitCapacityResponse(unitId, 1));
         when(leaseRepository.countOverlappingActiveLeases(eq(unitId), eq(startDate), eq(endDate), isNull()))
@@ -154,6 +159,7 @@ class LeaseServiceTest {
     @Test
     void createLease_rejectsUnitWithZeroCapacity() {
         LeaseCreateRequest request = new LeaseCreateRequest(unitId, startDate, endDate, List.of(new LeaseCreateRequest.OccupantInput(tenantId)), "Notes");
+        when(propertyUnitServiceClient.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
         when(propertyUnitServiceClient.getUnitCapacity(unitId))
                 .thenReturn(new UnitCapacityResponse(unitId, 0));
 
@@ -165,8 +171,8 @@ class LeaseServiceTest {
     void updateStatus_rechecksTenantBeforeActivation() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
-        when(identityServiceClient.validateUser(tenantId))
-                .thenReturn(new IdentityUserValidation(tenantId, true, false));
+        when(propertyUnitServiceClient.getUnitDetails(unitId)).thenReturn(new UnitDetailsResponse(unitId, "AVAILABLE", 1, null));
+        when(residents.isValidResident(tenantId)).thenReturn(false);
 
         assertThatThrownBy(() -> leaseService.updateStatus(
                 lease.getId(), new LeaseStatusUpdateRequest(LeaseStatus.ACTIVE, null)))
@@ -205,7 +211,7 @@ class LeaseServiceTest {
     void updateStatus_activates_whenCapacity1AndNoConflict() {
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
-        when(identityServiceClient.validateUser(tenantId)).thenReturn(new IdentityUserValidation(tenantId, true, true));
+        when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 1, UUID.randomUUID()));
         when(propertyUnitServiceClient.getUnitCapacity(lease.getUnitId()))
@@ -237,7 +243,7 @@ class LeaseServiceTest {
         // Acceptance Scenario: Rejection of Overlapping Date Ranges (Single Unit, capacity = 1) -> 409
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
-        when(identityServiceClient.validateUser(tenantId)).thenReturn(new IdentityUserValidation(tenantId, true, true));
+        when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 1, UUID.randomUUID()));
         when(propertyUnitServiceClient.getUnitCapacity(lease.getUnitId()))
@@ -255,7 +261,7 @@ class LeaseServiceTest {
         // Acceptance Scenario: Multi-Occupancy Under Capacity (capacity = 3, 2 active tenants -> 3rd activates successfully)
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
-        when(identityServiceClient.validateUser(tenantId)).thenReturn(new IdentityUserValidation(tenantId, true, true));
+        when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 3, UUID.randomUUID()));
         when(propertyUnitServiceClient.getUnitCapacity(lease.getUnitId()))
@@ -275,7 +281,7 @@ class LeaseServiceTest {
         // Acceptance Scenario: Multi-Occupancy Over Capacity (capacity = 3, 3 active leases -> 4th rejected with 422)
         Lease lease = existingLeaseWithStatus(LeaseStatus.DRAFT);
         when(leaseRepository.findById(lease.getId())).thenReturn(Optional.of(lease));
-        when(identityServiceClient.validateUser(tenantId)).thenReturn(new IdentityUserValidation(tenantId, true, true));
+        when(residents.isValidResident(tenantId)).thenReturn(true);
         when(propertyUnitServiceClient.getUnitDetails(lease.getUnitId()))
                 .thenReturn(new UnitDetailsResponse(lease.getUnitId(), "AVAILABLE", 3, UUID.randomUUID()));
         when(propertyUnitServiceClient.getUnitCapacity(lease.getUnitId()))
@@ -299,6 +305,11 @@ class LeaseServiceTest {
         when(leaseRepository.findByUnitIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
                 unitId, LeaseStatus.ACTIVE, LocalDate.now(), LocalDate.now()))
                 .thenReturn(List.of(activeLease));
+        Occupancy occupancy = new Occupancy();
+        occupancy.setLeaseId(activeLease.getId());
+        occupancy.setResidentId(tenantId);
+        occupancy.setMoveInDate(LocalDate.now());
+        when(occupancyRepository.findByUnitIdAndStatus(unitId, OccupancyStatus.ACTIVE)).thenReturn(List.of(occupancy));
 
         ActiveOccupancyResponse response = leaseService.getActiveOccupancy(unitId);
 

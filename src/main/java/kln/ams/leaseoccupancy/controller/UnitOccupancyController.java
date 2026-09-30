@@ -10,6 +10,7 @@ import kln.ams.leaseoccupancy.config.RequestContext;
 import kln.ams.leaseoccupancy.dto.ActiveOccupancyResponse;
 import kln.ams.leaseoccupancy.dto.ApiResponse;
 import kln.ams.leaseoccupancy.exception.ForbiddenException;
+import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
 import kln.ams.leaseoccupancy.service.LeaseService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,29 +34,19 @@ public class UnitOccupancyController {
     }
 
     @GetMapping("/{unitId}/active-occupancy")
-    @Operation(summary = "Query active unit occupancy (LEASE-012)",
-            description = "Returns current active occupancy for a unit. Allowed: SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, authorized owner/resident, or authorized service.")
+    @Operation(operationId = "LEASE-012", summary = "Query active unit occupancy",
+            description = "Returns current active occupancy for a unit. Allowed: SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, authorized owner/resident.")
     public ApiResponse<ActiveOccupancyResponse> getActiveOccupancy(@PathVariable UUID unitId) {
         AuthContext.Principal caller = AuthContext.current();
-        ActiveOccupancyResponse response = leaseService.getActiveOccupancy(unitId);
-
-        if (caller.isService()) {
-            AuthContext.requireServiceCaller("billing-payment-service");
-        } else if (!AuthContext.isManagement(caller)) {
-            String callerId = caller.sub();
-            boolean isOccupant = response.occupants() != null && response.occupants().stream()
-                    .anyMatch(o -> o.residentId() != null && o.residentId().toString().equals(callerId));
-
-            if (!isOccupant) {
-                UnitDetailsResponse unit = propertyUnitServiceClient.getUnitDetails(unitId);
-                boolean isOwner = unit != null && unit.ownerId() != null && unit.ownerId().toString().equals(callerId);
-                if (!isOwner) {
-                    throw new ForbiddenException("Caller is not authorized to view active occupancy for unit " + unitId);
-                }
+        if (!AuthContext.isManagement(caller)) {
+            if (caller.isUser() && (caller.roles().contains("OWNER") || caller.roles().contains("TENANT_RESIDENT"))) {
+                throw new DependencyUnavailableException("resident-management-service", null);
             }
+            throw new ForbiddenException("Resident or owner scope requires the Resident Management relationship contract");
         }
+
+        ActiveOccupancyResponse response = leaseService.getActiveOccupancy(unitId);
 
         return ApiResponse.success("Active occupancy retrieved successfully", response, RequestContext.getRequestId());
     }
 }
-
