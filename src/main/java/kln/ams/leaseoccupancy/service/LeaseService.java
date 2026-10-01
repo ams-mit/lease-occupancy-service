@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -142,7 +143,10 @@ public class LeaseService {
             spec = spec.and(LeaseSpecifications.unitIdIn(matchingUnits));
         }
 
-        return leaseRepository.findAll(spec, pageable);
+        Page<Lease> page = leaseRepository.findAll(spec, pageable);
+        // Controllers map occupants after this transaction closes; load them while the session is open.
+        page.forEach(lease -> Hibernate.initialize(lease.getOccupants()));
+        return page;
     }
 
     @Transactional(readOnly = true)
@@ -161,12 +165,14 @@ public class LeaseService {
     @Transactional(readOnly = true)
     public List<Lease> historyForUnit(UUID unitId) {
         propertyUnitServiceClient.getUnitDetails(unitId);
-        return leaseRepository.findByUnitIdOrderByStartDateDesc(unitId);
+        List<Lease> leases = leaseRepository.findByUnitIdOrderByStartDateDesc(unitId);
+        leases.forEach(lease -> Hibernate.initialize(lease.getOccupants()));
+        return leases;
     }
 
     @Transactional
     public Lease updateStatus(UUID leaseId, LeaseStatusUpdateRequest request) {
-        Lease lease = leaseRepository.findById(leaseId)
+        Lease lease = leaseRepository.findWithOccupants(leaseId)
                 .orElseThrow(() -> new LeaseNotFoundException(leaseId));
 
         LeaseStatus target = request.status();

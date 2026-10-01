@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -93,7 +94,7 @@ public class OccupancyController {
         }
 
         Page<Occupancy> result = occupancyService.listOccupantsForUnit(
-                unitId, status, includeHistory, PageRequest.of(page, size));
+                unitId, status, includeHistory, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "moveInDate")));
 
         List<OccupancyResponse> data = result.map(OccupancyResponse::from).getContent();
         return ApiResponse.successPage("Occupants retrieved successfully", data, PaginationMeta.from(result), RequestContext.getRequestId());

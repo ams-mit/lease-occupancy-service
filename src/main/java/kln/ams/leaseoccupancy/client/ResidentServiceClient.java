@@ -3,9 +3,10 @@ package kln.ams.leaseoccupancy.client;
 import kln.ams.leaseoccupancy.config.JwtService;
 import kln.ams.leaseoccupancy.config.RequestContext;
 import kln.ams.leaseoccupancy.exception.DependencyUnavailableException;
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -25,18 +26,20 @@ public class ResidentServiceClient {
 
     public void requireResident(UUID residentId) {
         try {
-            JsonNode body = restClient.get().uri("/api/v1/internal/residents/{residentId}/validate", residentId)
+            // Read as plain maps: the RestClient's Jackson 3 converter cannot build Jackson 2 JsonNode trees.
+            Map<String, Object> body = restClient.get().uri("/api/v1/internal/residents/{residentId}/validate", residentId)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtService.mintServiceToken())
                     .header("X-Request-ID", RequestContext.getRequestId())
-                    .retrieve().body(JsonNode.class);
-            JsonNode data = body == null ? null : body.path("data");
-            boolean positive = data != null && (data.isBoolean() && data.asBoolean()
-                    || data.path("valid").isBoolean() && data.path("valid").asBoolean()
-                    || data.path("exists").isBoolean() && data.path("exists").asBoolean());
-            boolean sameId = data != null && (!data.hasNonNull("residentId")
-                    || residentId.toString().equals(data.path("residentId").asText()));
-            if (body == null || !body.path("success").asBoolean(false) || !positive || !sameId
-                    || data.path("active").isBoolean() && !data.path("active").asBoolean()) {
+                    .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() { });
+            Object data = body == null ? null : body.get("data");
+            Map<?, ?> fields = data instanceof Map<?, ?> map ? map : Map.of();
+            boolean positive = Boolean.TRUE.equals(data)
+                    || Boolean.TRUE.equals(fields.get("valid"))
+                    || Boolean.TRUE.equals(fields.get("exists"));
+            boolean sameId = fields.get("residentId") == null
+                    || residentId.toString().equals(String.valueOf(fields.get("residentId")));
+            if (body == null || !Boolean.TRUE.equals(body.get("success")) || !positive || !sameId
+                    || Boolean.FALSE.equals(fields.get("active"))) {
                 throw new DependencyUnavailableException("resident-management-service", null);
             }
         } catch (HttpClientErrorException.NotFound ex) {

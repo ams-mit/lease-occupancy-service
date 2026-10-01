@@ -11,6 +11,8 @@ import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Filter specifications for LEASE-002: GET /api/v1/leases.
+ * Every factory returns a specification; Spring Data 4 rejects {@code and(null)}, so an absent
+ * filter is an always-true conjunction.
  */
 public final class LeaseSpecifications {
 
@@ -18,16 +20,16 @@ public final class LeaseSpecifications {
     }
 
     public static Specification<Lease> hasStatus(LeaseStatus status) {
-        return (root, query, cb) -> status == null ? null : cb.equal(root.get("status"), status);
+        return (root, query, cb) -> status == null ? cb.conjunction() : cb.equal(root.get("status"), status);
     }
 
     public static Specification<Lease> hasUnitId(UUID unitId) {
-        return (root, query, cb) -> unitId == null ? null : cb.equal(root.get("unitId"), unitId);
+        return (root, query, cb) -> unitId == null ? cb.conjunction() : cb.equal(root.get("unitId"), unitId);
     }
 
     public static Specification<Lease> hasTenantOrOccupantId(UUID residentId) {
         if (residentId == null) {
-            return null;
+            return (root, query, cb) -> cb.conjunction();
         }
         return (root, query, cb) -> {
             query.distinct(true);
@@ -41,7 +43,7 @@ public final class LeaseSpecifications {
 
     public static Specification<Lease> unitIdIn(Collection<UUID> unitIds) {
         if (unitIds == null) {
-            return null;
+            return (root, query, cb) -> cb.conjunction();
         }
         if (unitIds.isEmpty()) {
             return (root, query, cb) -> cb.disjunction();
@@ -50,16 +52,16 @@ public final class LeaseSpecifications {
     }
 
     public static Specification<Lease> startDateOnOrAfter(LocalDate startDate) {
-        return (root, query, cb) -> startDate == null ? null : cb.greaterThanOrEqualTo(root.get("startDate"), startDate);
+        return (root, query, cb) -> startDate == null ? cb.conjunction() : cb.greaterThanOrEqualTo(root.get("startDate"), startDate);
     }
 
     public static Specification<Lease> endDateOnOrBefore(LocalDate endDate) {
-        return (root, query, cb) -> endDate == null ? null : cb.lessThanOrEqualTo(root.get("endDate"), endDate);
+        return (root, query, cb) -> endDate == null ? cb.conjunction() : cb.lessThanOrEqualTo(root.get("endDate"), endDate);
     }
 
     /** Matches leases whose [startDate, endDate] range includes the given date. */
     public static Specification<Lease> activeOn(LocalDate date) {
-        return (root, query, cb) -> date == null ? null : cb.and(
+        return (root, query, cb) -> date == null ? cb.conjunction() : cb.and(
                 cb.lessThanOrEqualTo(root.get("startDate"), date),
                 cb.greaterThanOrEqualTo(root.get("endDate"), date));
     }
